@@ -6,26 +6,26 @@ spring:
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
   jpa:
     hibernate:
-      ddl-auto: validate
+      # 'update' auto-creates / alters tables from @Entity definitions.
+      # Switch to 'validate' once schema is stable in production.
+      ddl-auto: update
+    show-sql: false          # set to true for local debugging
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.SQLServerDialect
-  security:
-    oauth2:
-      client:
-        registration:
-          google:
-            client-id: ${GOOGLE_CLIENT_ID:}
-            client-secret: ${GOOGLE_CLIENT_SECRET:}
-            scope: openid, profile, email
-            redirect-uri: "{baseUrl}/login/oauth2/code/google"
-            authorization-grant-type: authorization_code
-        provider:
-          google:
-            issuer-uri: https://accounts.google.com
+        # dialect is auto-detected by Hibernate 6 — do NOT set explicitly (HHH90000025)
+        # Ensure column/table names are generated in snake_case
+        physical_naming_strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
+        default_batch_fetch_size: 20    # prevent N+1 with lazy collections
+  # ── OAuth2 ──────────────────────────────────────────────────────────────────
+  # Exclude the auto-configuration that tries to validate OAuth2 credentials
+  # at startup. GoogleOAuth2 is wired manually in SecurityConfig when credentials
+  # are present (injected via GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET env vars).
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration
 
 jwt:
-  secret: ${JWT_SECRET:secret}
+  secret: ${JWT_SECRET:changeme-replace-in-production}
   access-token-expiration: 900s
   refresh-token-expiration: 30d
 
