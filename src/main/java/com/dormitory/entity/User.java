@@ -56,6 +56,29 @@ public class User {
     @Column(name = "google_id", length = 255)
     private String googleId;
 
+    // ── LANDLORD-specific fields ───────────────────────────────────────────────
+
+    /** CCCD / Passport number (required for LANDLORD) */
+    @Column(name = "identity_number", length = 50)
+    private String identityNumber;
+
+    /** Tax code / mã số thuế (optional for LANDLORD) */
+    @Column(name = "tax_code", length = 50)
+    private String taxCode;
+
+    /** Business license / giấy phép kinh doanh (optional for LANDLORD) */
+    @Column(name = "business_license", length = 255)
+    private String businessLicense;
+
+    /**
+     * Whether the landlord account has been verified by an Admin.
+     * false = account active but features restricted.
+     * true  = full landlord access granted.
+     * Always null/false for TENANT and ADMIN roles.
+     */
+    @Column(name = "landlord_verified", nullable = false, columnDefinition = "bit default 0")
+    private Boolean landlordVerified = false;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "role", nullable = false, length = 20)
     private Role role;
@@ -108,4 +131,17 @@ public class User {
 
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+
+    public String getIdentityNumber() { return identityNumber; }
+    public void setIdentityNumber(String identityNumber) { this.identityNumber = identityNumber; }
+
+    public String getTaxCode() { return taxCode; }
+    public void setTaxCode(String taxCode) { this.taxCode = taxCode; }
+
+    public String getBusinessLicense() { return businessLicense; }
+    public void setBusinessLicense(String businessLicense) { this.businessLicense = businessLicense; }
+
+    public Boolean getLandlordVerified() { return landlordVerified; }
+    public void setLandlordVerified(Boolean landlordVerified) { this.landlordVerified = landlordVerified; }
 }
+

@@ -11,6 +11,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
  * Core Spring Security configuration.
@@ -24,6 +25,12 @@ import org.springframework.security.web.SecurityFilterChain;
 @EnableWebSecurity
 @EnableMethodSecurity          // enables @PreAuthorize / @Secured on service methods
 public class SecurityConfig {
+
+    private final JwtAuthFilter jwtAuthFilter;
+
+    public SecurityConfig(JwtAuthFilter jwtAuthFilter) {
+        this.jwtAuthFilter = jwtAuthFilter;
+    }
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -43,6 +50,8 @@ public class SecurityConfig {
                 // ── Public auth endpoints ──────────────────────────────────
                 .requestMatchers(HttpMethod.POST,
                     "/api/auth/register",
+                    "/api/auth/verify-otp",
+                    "/api/auth/resend-otp",
                     "/api/auth/login",
                     "/api/auth/google",
                     "/api/auth/refresh",
@@ -75,6 +84,9 @@ public class SecurityConfig {
                 // ── Everything else requires authentication ────────────────
                 .anyRequest().authenticated()
             );
+
+        // Add JWT filter BEFORE Spring's username/password filter
+        http.addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

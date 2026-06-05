@@ -28,12 +28,17 @@ public class JwtTokenProvider {
     }
 
     public String createAccessToken(String subject, String role) {
+        return createAccessToken(subject, role, false);
+    }
+
+    public String createAccessToken(String subject, String role, boolean landlordVerified) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + accessTokenExpiration.toMillis());
 
         return Jwts.builder()
                 .setSubject(subject)
                 .claim("role", role)
+                .claim("landlordVerified", landlordVerified)
                 .setIssuedAt(now)
                 .setExpiration(expiryDate)
                 .signWith(getSigningKey(), SignatureAlgorithm.HS256)
