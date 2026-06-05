@@ -1,4 +1,4 @@
-package com.dormitory.dto;
+package com.dormitory.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
 

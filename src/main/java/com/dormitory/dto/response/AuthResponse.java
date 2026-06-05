@@ -1,4 +1,4 @@
-package com.dormitory.dto;
+package com.dormitory.dto.response;
 
 public class AuthResponse {
 
