@@ -17,6 +17,13 @@ spring:
         physical_naming_strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
         default_batch_fetch_size: 20    # prevent N+1 with lazy collections
   # ── OAuth2 ──────────────────────────────────────────────────────────────────
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:653259307065-jhm2na53agncemvudnkg2ir3mttulm6f.apps.googleusercontent.com}
+
   # Exclude the auto-configuration that tries to validate OAuth2 credentials
   # at startup. GoogleOAuth2 is wired manually in SecurityConfig when credentials
   # are present (injected via GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET env vars).
@@ -25,7 +32,7 @@ spring:
       - org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration
 
 jwt:
-  secret: ${JWT_SECRET:changeme-replace-in-production}
+  secret: ${JWT_SECRET:changeme-replace-in-production-with-a-longer-secure-key-12345}
   access-token-expiration: 900s
   refresh-token-expiration: 30d
 

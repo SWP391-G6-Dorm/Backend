@@ -1,7 +1,7 @@
 package com.dormitory.controller;
 
-import com.dormitory.dto.AuthResponse;
-import com.dormitory.dto.GoogleAuthRequest;
+import com.dormitory.dto.response.AuthResponse;
+import com.dormitory.dto.request.GoogleAuthRequest;
 import com.dormitory.service.AuthService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +18,12 @@ public class AuthController {
 
     public AuthController(AuthService authService) {
         this.authService = authService;
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody com.dormitory.dto.request.LoginRequest request) {
+        AuthResponse response = authService.authenticate(request);
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/google")
