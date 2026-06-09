@@ -87,6 +87,12 @@ public class User {
     @Column(name = "status", nullable = false, length = 20)
     private Status status = Status.PENDING;
 
+    @Column(name = "otp_code", length = 10)
+    private String otpCode;
+
+    @Column(name = "otp_expired_at")
+    private LocalDateTime otpExpiredAt;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -143,5 +149,11 @@ public class User {
 
     public Boolean getLandlordVerified() { return landlordVerified; }
     public void setLandlordVerified(Boolean landlordVerified) { this.landlordVerified = landlordVerified; }
+
+    public String getOtpCode() { return otpCode; }
+    public void setOtpCode(String otpCode) { this.otpCode = otpCode; }
+
+    public LocalDateTime getOtpExpiredAt() { return otpExpiredAt; }
+    public void setOtpExpiredAt(LocalDateTime otpExpiredAt) { this.otpExpiredAt = otpExpiredAt; }
 }
 

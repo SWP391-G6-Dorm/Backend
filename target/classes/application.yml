@@ -6,9 +6,9 @@ spring:
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
   jpa:
     hibernate:
-      # 'update' auto-creates / alters tables from @Entity definitions.
-      # Switch to 'validate' once schema is stable in production.
-      ddl-auto: update
+      # 'create' sẽ xoá toàn bộ bảng và dữ liệu cũ rồi tạo lại từ đầu.
+      # Sau khi chạy xong và data đã bị xoá, bạn có thể đổi lại thành 'update' nhé!
+      ddl-auto: create
     show-sql: false          # set to true for local debugging
     properties:
       hibernate:
@@ -38,3 +38,15 @@ jwt:
 
 server:
   port: 8080
+
+spring.mail:
+  host: smtp.gmail.com
+  port: 587
+  username: ${MAIL_USERNAME}
+  password: ${MAIL_PASSWORD}
+  properties:
+    mail:
+      smtp:
+        auth: true
+        starttls:
+          enable: true

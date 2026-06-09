@@ -29,9 +29,9 @@ public class AuthController {
     // ── Login ─────────────────────────────────────────────────────────────────
 
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+    public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest request) {
         AuthResponse response = authService.authenticate(request);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
     // ── Google OAuth ──────────────────────────────────────────────────────────
@@ -45,9 +45,17 @@ public class AuthController {
     // ── Refresh Token ─────────────────────────────────────────────────────────
 
     @PostMapping("/refresh")
-    public ResponseEntity<AuthResponse> refreshToken(@RequestBody String refreshToken) {
+    public ResponseEntity<ApiResponse<AuthResponse>> refreshToken(@RequestBody String refreshToken) {
         AuthResponse response = authService.refreshAccessToken(refreshToken);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
+    // ── Logout ────────────────────────────────────────────────────────────────
+
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse<Void>> logout(@RequestBody String refreshToken) {
+        authService.logout(refreshToken);
+        return ResponseEntity.ok(ApiResponse.ok(null));
     }
 
     // ── Register ──────────────────────────────────────────────────────────────

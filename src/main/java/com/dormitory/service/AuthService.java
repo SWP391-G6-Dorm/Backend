@@ -21,6 +21,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
 
 import java.security.SecureRandom;
 import java.time.Instant;
@@ -38,17 +40,12 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider tokenProvider;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final JavaMailSender mailSender;
 
     @Value("${spring.security.oauth2.client.registration.google.client-id:default_client_id}")
     private String googleClientId;
 
-    // ── In-memory OTP store: email → OtpEntry ──────────────────────────────────
-    // In production, replace with Redis-backed cache.
-    private final Map<String, OtpEntry> otpStore = new ConcurrentHashMap<>();
-
     private static final int OTP_EXPIRY_MINUTES = 5;
-
-    private record OtpEntry(String code, Instant expiresAt) {}
 
     // ── Register ───────────────────────────────────────────────────────────────
 
@@ -92,13 +89,17 @@ public class AuthService {
             user.setBusinessLicense(request.getBusinessLicense());
         }
 
+        // 6. Generate and store OTP in DB
+        String otp = generateOtp();
+        user.setOtpCode(otp);
+        user.setOtpExpiredAt(java.time.LocalDateTime.now().plusMinutes(OTP_EXPIRY_MINUTES));
+
         userRepository.save(user);
 
-        // 6. Generate and store OTP
-        String otp = generateOtp();
-        otpStore.put(request.getEmail(), new OtpEntry(otp, Instant.now().plus(OTP_EXPIRY_MINUTES, ChronoUnit.MINUTES)));
+        // 7. Send OTP via Email
+        sendOtpEmail(request.getEmail(), otp);
 
-        // 7. Log OTP to console (dev mode)
+        // Log OTP to console (dev mode)
         System.out.println("========================================");
         System.out.println("[DEV] OTP for " + request.getEmail() + " : " + otp);
         if (request.getRole() == User.Role.LANDLORD) {
@@ -111,29 +112,26 @@ public class AuthService {
 
     @Transactional
     public OtpVerifyResponse verifyOtp(OtpVerifyRequest request) {
-        OtpEntry entry = otpStore.get(request.getEmail());
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new RuntimeException("Account not found."));
 
-        if (entry == null) {
+        if (user.getOtpCode() == null) {
             throw new RuntimeException("No OTP found for this email. Please register or request a new code.");
         }
 
-        if (Instant.now().isAfter(entry.expiresAt())) {
-            otpStore.remove(request.getEmail());
+        if (java.time.LocalDateTime.now().isAfter(user.getOtpExpiredAt())) {
             throw new RuntimeException("OTP has expired. Please request a new code.");
         }
 
-        if (!entry.code().equals(request.getOtp())) {
+        if (!user.getOtpCode().equals(request.getOtp())) {
             throw new RuntimeException("Invalid OTP code. Please try again.");
         }
 
         // Activate the user
-        User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new RuntimeException("Account not found."));
         user.setStatus(User.Status.ACTIVE);
+        user.setOtpCode(null);
+        user.setOtpExpiredAt(null);
         userRepository.save(user);
-
-        // Remove used OTP
-        otpStore.remove(request.getEmail());
 
         // Return role & landlordVerified so frontend can redirect correctly
         String message = user.getRole() == User.Role.LANDLORD
@@ -158,7 +156,11 @@ public class AuthService {
         }
 
         String otp = generateOtp();
-        otpStore.put(request.getEmail(), new OtpEntry(otp, Instant.now().plus(OTP_EXPIRY_MINUTES, ChronoUnit.MINUTES)));
+        user.setOtpCode(otp);
+        user.setOtpExpiredAt(java.time.LocalDateTime.now().plusMinutes(OTP_EXPIRY_MINUTES));
+        userRepository.save(user);
+
+        sendOtpEmail(request.getEmail(), otp);
 
         System.out.println("========================================");
         System.out.println("[DEV] Resend OTP for " + request.getEmail() + " : " + otp);
@@ -266,6 +268,14 @@ public class AuthService {
         );
     }
 
+    // ── Logout ─────────────────────────────────────────────────────────────────
+
+    @Transactional
+    public void logout(String requestRefreshToken) {
+        refreshTokenRepository.findByToken(requestRefreshToken)
+                .ifPresent(refreshTokenRepository::delete);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private AuthResponse generateAuthResponse(User user) {
@@ -299,5 +309,18 @@ public class AuthService {
         SecureRandom random = new SecureRandom();
         int code = 100000 + random.nextInt(900000); // always 6 digits
         return String.valueOf(code);
+    }
+
+    private void sendOtpEmail(String toEmail, String otpCode) {
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setTo(toEmail);
+            message.setSubject("BoardingHub - Mã xác thực Email");
+            message.setText("Mã xác thực OTP của bạn là: " + otpCode + "\n\nMã này sẽ hết hạn trong 5 phút.");
+            mailSender.send(message);
+            System.out.println("Đã gửi email OTP tới: " + toEmail);
+        } catch (Exception e) {
+            System.err.println("Lỗi khi gửi email OTP: " + e.getMessage());
+        }
     }
 }
