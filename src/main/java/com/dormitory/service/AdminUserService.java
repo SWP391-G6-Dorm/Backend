@@ -2,8 +2,8 @@ package com.dormitory.service;
 
 import com.dormitory.dto.request.AdminUpdateUserRequest;
 import com.dormitory.dto.response.AdminUserDto;
-import com.dormitory.entity.User;
-import com.dormitory.repository.UserRepository;
+import com.homestay.entity.User;
+import com.homestay.repository.UserRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -20,11 +20,33 @@ public class AdminUserService {
     }
 
     public Page<AdminUserDto> searchUsers(String keyword, String role, String status, int page, int size) {
-        User.Role roleEnum = (role != null && !role.equals("ALL")) ? User.Role.valueOf(role) : null;
-        User.Status statusEnum = (status != null && !status.equals("ALL")) ? User.Status.valueOf(status) : null;
-        String kw = (keyword != null && !keyword.isBlank()) ? keyword : null;
+        PageRequest pageable = PageRequest.of(page, size);
 
-        Page<User> users = userRepository.searchUsers(roleEnum, statusEnum, kw, PageRequest.of(page, size));
+        boolean hasKeyword = keyword != null && !keyword.isBlank();
+        boolean hasRole    = role   != null && !role.equals("ALL");
+        boolean hasStatus  = status != null && !status.equals("ALL");
+
+        User.Role roleEnum   = hasRole   ? User.Role.valueOf(role)     : null;
+        User.Status statusEnum = hasStatus ? User.Status.valueOf(status) : null;
+
+        Page<User> users;
+
+        if (hasKeyword) {
+            // keyword search — role filter applied per-param; fall back to CUSTOMER if unspecified
+            User.Role r = roleEnum != null ? roleEnum : User.Role.CUSTOMER;
+            users = userRepository
+                    .findByRoleAndFullNameContainingIgnoreCaseOrRoleAndEmailContainingIgnoreCase(
+                            r, keyword, r, keyword, pageable);
+        } else if (hasRole && hasStatus) {
+            users = userRepository.findByRoleAndStatus(roleEnum, statusEnum, pageable);
+        } else if (hasRole) {
+            users = userRepository.findByRole(roleEnum, pageable);
+        } else if (hasStatus) {
+            users = userRepository.findByRoleAndStatus(User.Role.CUSTOMER, statusEnum, pageable);
+        } else {
+            users = userRepository.findByRole(User.Role.CUSTOMER, pageable);
+        }
+
         return users.map(AdminUserDto::new);
     }
 
