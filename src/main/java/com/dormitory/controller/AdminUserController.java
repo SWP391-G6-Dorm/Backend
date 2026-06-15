@@ -2,7 +2,7 @@ package com.dormitory.controller;
 
 import com.dormitory.dto.request.AdminUpdateUserRequest;
 import com.dormitory.dto.response.AdminUserDto;
-import com.dormitory.dto.response.ApiResponse;
+import com.homestay.dto.response.ApiResponse;
 import com.dormitory.service.AdminUserService;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;

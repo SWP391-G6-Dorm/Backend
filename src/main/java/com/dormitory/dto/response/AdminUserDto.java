@@ -1,13 +1,13 @@
 package com.dormitory.dto.response;
 
-import com.dormitory.entity.User;
+import com.homestay.entity.User;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
 
 public class AdminUserDto {
     private UUID id;
-    private String name;
+    private String fullName;
     private String email;
     private String phone;
     private String role;
@@ -20,7 +20,7 @@ public class AdminUserDto {
 
     public AdminUserDto(User user) {
         this.id = user.getId();
-        this.name = user.getName();
+        this.fullName = user.getFullName();
         this.email = user.getEmail();
         this.phone = user.getPhone();
         this.role = user.getRole() != null ? user.getRole().name() : null;
@@ -33,8 +33,8 @@ public class AdminUserDto {
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
 
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
+    public String getFullName() { return fullName; }
+    public void setFullName(String fullName) { this.fullName = fullName; }
 
     public String getEmail() { return email; }
     public void setEmail(String email) { this.email = email; }
