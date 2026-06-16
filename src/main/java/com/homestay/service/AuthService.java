@@ -1,0 +1,311 @@
+package com.homestay.service;
+
+import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
+import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
+import com.google.api.client.http.javanet.NetHttpTransport;
+import com.google.api.client.json.gson.GsonFactory;
+import com.homestay.dto.request.*;
+import com.homestay.dto.response.AuthResponse;
+import com.homestay.entity.RefreshToken;
+import com.homestay.entity.User;
+import com.homestay.exception.BusinessException;
+import com.homestay.exception.ResourceNotFoundException;
+import com.homestay.repository.RefreshTokenRepository;
+import com.homestay.repository.UserRepository;
+import com.homestay.security.JwtTokenProvider;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.Optional;
+import java.util.Random;
+import java.util.UUID;
+
+@Service
+public class AuthService {
+
+    @Value("${app.google.client-id}")
+    private String googleClientId;
+
+    private final UserRepository userRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtTokenProvider jwtTokenProvider;
+    private final JavaMailSender mailSender;
+
+    public AuthService(UserRepository userRepository,
+                       RefreshTokenRepository refreshTokenRepository,
+                       PasswordEncoder passwordEncoder,
+                       JwtTokenProvider jwtTokenProvider,
+                       JavaMailSender mailSender) {
+        this.userRepository = userRepository;
+        this.refreshTokenRepository = refreshTokenRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.jwtTokenProvider = jwtTokenProvider;
+        this.mailSender = mailSender;
+    }
+
+    // ── Đăng ký bằng email ────────────────────────────────────────────────────
+
+    @Transactional
+    public void register(RegisterRequest request) {
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw new BusinessException("Email đã được đăng ký. Vui lòng dùng email khác.");
+        }
+
+        User user = new User();
+        user.setFullName(request.getFullName());
+        user.setEmail(request.getEmail());
+        user.setPhone(request.getPhone());
+        user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        user.setRole(User.Role.CUSTOMER);
+        user.setStatus(User.Status.INACTIVE);
+
+        String otp = generateOtp();
+        user.setOtpCode(otp);
+        user.setOtpExpiredAt(LocalDateTime.now().plusMinutes(10));
+        userRepository.save(user);
+
+        sendOtpEmail(user.getEmail(), otp, "Xác thực tài khoản");
+    }
+
+    @Transactional
+    public void verifyOtp(OtpVerifyRequest request) {
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản"));
+
+        validateOtp(user, request.getOtpCode());
+
+        user.setStatus(User.Status.ACTIVE);
+        user.setOtpCode(null);
+        user.setOtpExpiredAt(null);
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public void resendOtp(ResendOtpRequest request) {
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản"));
+
+        if (user.getStatus() == User.Status.ACTIVE) {
+            throw new BusinessException("Tài khoản đã được kích hoạt rồi");
+        }
+
+        String otp = generateOtp();
+        user.setOtpCode(otp);
+        user.setOtpExpiredAt(LocalDateTime.now().plusMinutes(10));
+        userRepository.save(user);
+
+        sendOtpEmail(user.getEmail(), otp, "Gửi lại mã xác thực");
+    }
+
+    // ── Đăng nhập bằng email/mật khẩu ───────────────────────────────────────
+
+    public AuthResponse login(LoginRequest request) {
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new BusinessException("Email hoặc mật khẩu không đúng"));
+
+        if (user.getPasswordHash() == null) {
+            throw new BusinessException("Tài khoản này đăng nhập bằng Google. Vui lòng dùng nút 'Đăng nhập với Google'.");
+        }
+
+        if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+            throw new BusinessException("Email hoặc mật khẩu không đúng");
+        }
+
+        checkAccountStatus(user);
+        return buildAuthResponse(user);
+    }
+
+    // ── Đăng nhập bằng Google ────────────────────────────────────────────────
+
+    @Transactional
+    public AuthResponse loginWithGoogle(GoogleAuthRequest request) {
+        // Verify ID Token với Google server
+        GoogleIdToken.Payload payload = verifyGoogleToken(request.getIdToken());
+
+        String googleId = payload.getSubject();
+        String email    = payload.getEmail();
+        String fullName = (String) payload.get("name");
+        String avatar   = (String) payload.get("picture");
+
+        // Tìm user theo googleId hoặc email
+        Optional<User> existingByGoogleId = userRepository.findByGoogleId(googleId);
+        Optional<User> existingByEmail    = userRepository.findByEmail(email);
+
+        User user;
+
+        if (existingByGoogleId.isPresent()) {
+            // Đã từng đăng nhập Google -> dùng user này
+            user = existingByGoogleId.get();
+
+        } else if (existingByEmail.isPresent()) {
+            // Email đã tồn tại (đăng ký bằng form) -> liên kết Google vào
+            user = existingByEmail.get();
+            user.setGoogleId(googleId);
+            if (user.getAvatarUrl() == null) {
+                user.setAvatarUrl(avatar);
+            }
+            userRepository.save(user);
+
+        } else {
+            // Người dùng mới -> tự động tạo account ACTIVE (Google đã xác thực email)
+            user = new User();
+            user.setFullName(fullName != null ? fullName : email);
+            user.setEmail(email);
+            user.setGoogleId(googleId);
+            user.setAvatarUrl(avatar);
+            user.setRole(User.Role.CUSTOMER);
+            user.setStatus(User.Status.ACTIVE); // Google đã xác thực rồi
+            userRepository.save(user);
+        }
+
+        checkAccountStatus(user);
+        return buildAuthResponse(user);
+    }
+
+    // ── Quên/Đặt lại mật khẩu ───────────────────────────────────────────────
+
+    @Transactional
+    public void forgotPassword(ForgotPasswordRequest request) {
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản với email này"));
+
+        String otp = generateOtp();
+        user.setOtpCode(otp);
+        user.setOtpExpiredAt(LocalDateTime.now().plusMinutes(10));
+        userRepository.save(user);
+
+        sendOtpEmail(user.getEmail(), otp, "Đặt lại mật khẩu");
+    }
+
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản"));
+
+        validateOtp(user, request.getOtpCode());
+
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        user.setOtpCode(null);
+        user.setOtpExpiredAt(null);
+        userRepository.save(user);
+
+        // Thu hồi tất cả refresh token khi đổi mật khẩu
+        refreshTokenRepository.revokeAllByUser(user);
+    }
+
+    // ── Refresh / Logout ─────────────────────────────────────────────────────
+
+    @Transactional
+    public AuthResponse refreshToken(RefreshTokenRequest request) {
+        RefreshToken token = refreshTokenRepository.findByToken(request.getRefreshToken())
+                .orElseThrow(() -> new BusinessException("Refresh token không hợp lệ"));
+
+        if (!token.isValid()) {
+            throw new BusinessException("Refresh token đã hết hạn hoặc bị thu hồi");
+        }
+
+        // Rotation: thu hồi token cũ
+        token.setRevokedAt(LocalDateTime.now());
+        refreshTokenRepository.save(token);
+
+        return buildAuthResponse(token.getUser());
+    }
+
+    @Transactional
+    public void logout(RefreshTokenRequest request) {
+        refreshTokenRepository.findByToken(request.getRefreshToken())
+                .ifPresent(token -> {
+                    token.setRevokedAt(LocalDateTime.now());
+                    refreshTokenRepository.save(token);
+                });
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    // Verify Google ID Token với Google server
+    private GoogleIdToken.Payload verifyGoogleToken(String idToken) {
+        try {
+            GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(
+                    new NetHttpTransport(), new GsonFactory())
+                    .setAudience(Collections.singletonList(googleClientId))
+                    .build();
+
+            GoogleIdToken googleIdToken = verifier.verify(idToken);
+            if (googleIdToken == null) {
+                throw new BusinessException("Google token không hợp lệ hoặc đã hết hạn");
+            }
+            return googleIdToken.getPayload();
+
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException("Xác thực Google thất bại: " + e.getMessage());
+        }
+    }
+
+    // Kiểm tra trạng thái tài khoản trước khi đăng nhập
+    private void checkAccountStatus(User user) {
+        if (user.getStatus() == User.Status.INACTIVE) {
+            throw new BusinessException("Tài khoản chưa xác thực email. Vui lòng kiểm tra hộp thư.");
+        }
+        if (user.getStatus() == User.Status.SUSPENDED) {
+            throw new BusinessException("Tài khoản đã bị tạm khóa. Vui lòng liên hệ hỗ trợ.");
+        }
+    }
+
+    // Tạo access token + refresh token, trả về AuthResponse
+    private AuthResponse buildAuthResponse(User user) {
+        String accessToken = jwtTokenProvider.generateToken(user.getId());
+
+        RefreshToken refreshToken = new RefreshToken();
+        refreshToken.setToken(UUID.randomUUID().toString());
+        refreshToken.setUser(user);
+        refreshToken.setExpiresAt(LocalDateTime.now().plusDays(30));
+        refreshTokenRepository.save(refreshToken);
+
+        return new AuthResponse(accessToken, refreshToken.getToken(),
+                AuthResponse.fromUser(user));
+    }
+
+    // Kiểm tra OTP đúng và còn hạn
+    private void validateOtp(User user, String otpCode) {
+        if (user.getOtpCode() == null || !user.getOtpCode().equals(otpCode)) {
+            throw new BusinessException("Mã OTP không đúng");
+        }
+        if (user.getOtpExpiredAt() == null || LocalDateTime.now().isAfter(user.getOtpExpiredAt())) {
+            throw new BusinessException("Mã OTP đã hết hạn. Vui lòng yêu cầu mã mới.");
+        }
+    }
+
+    // Sinh OTP 6 chữ số
+    private String generateOtp() {
+        return String.valueOf(100000 + new Random().nextInt(900000));
+    }
+
+    // Gửi email chứa OTP
+    private void sendOtpEmail(String to, String otp, String subject) {
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setTo(to);
+            message.setSubject("[Homestay] " + subject);
+            message.setText(
+                "Xin chào,\n\n" +
+                "Mã xác thực của bạn là: " + otp + "\n" +
+                "Mã có hiệu lực trong 10 phút.\n" +
+                "Vui lòng không chia sẻ mã này với ai.\n\n" +
+                "Trân trọng,\nĐội ngũ Homestay"
+            );
+            mailSender.send(message);
+        } catch (Exception e) {
+            System.err.println("[AuthService] Gửi email thất bại: " + e.getMessage());
+            System.err.println("[DEBUG] OTP: " + otp); // Chỉ dùng khi dev
+        }
+    }
+}
