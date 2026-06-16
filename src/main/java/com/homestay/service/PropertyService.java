@@ -25,15 +25,15 @@ public class PropertyService {
         this.propertyRepository = propertyRepository;
     }
 
-    // Lấy danh sách property (có thể lọc theo tên và status)
+    // Lấy danh sách property (có thể lọc theo tên/địa chỉ và status) — SCR-33
     public PageResponse<PropertyResponse> getAll(String search, String status, Pageable pageable) {
         Page<Property> page;
 
         if (search != null && !search.isBlank() && status != null && !status.isBlank()) {
             Property.Status s = Property.Status.valueOf(status.toUpperCase());
-            page = propertyRepository.findByNameContainingIgnoreCaseAndStatus(search, s, pageable);
+            page = propertyRepository.searchByNameOrAddressAndStatus(search, s, pageable);
         } else if (search != null && !search.isBlank()) {
-            page = propertyRepository.findByNameContainingIgnoreCase(search, pageable);
+            page = propertyRepository.searchByNameOrAddress(search, pageable);
         } else if (status != null && !status.isBlank()) {
             Property.Status s = Property.Status.valueOf(status.toUpperCase());
             page = propertyRepository.findByStatus(s, pageable);
@@ -44,8 +44,7 @@ public class PropertyService {
         return new PageResponse<>(
                 page.getContent().stream().map(PropertyResponse::fromEntity).collect(Collectors.toList()),
                 page.getNumber(), page.getSize(),
-                page.getTotalElements(), page.getTotalPages()
-        );
+                page.getTotalElements(), page.getTotalPages());
     }
 
     // Lấy chi tiết 1 property
@@ -61,7 +60,15 @@ public class PropertyService {
         property.setName(request.getName());
         property.setAddress(request.getAddress());
         property.setDescription(request.getDescription());
-        property.setStatus(Property.Status.ACTIVE);
+        if (request.getStatus() != null && !request.getStatus().isBlank()) {
+            try {
+                property.setStatus(Property.Status.valueOf(request.getStatus().toUpperCase()));
+            } catch (IllegalArgumentException e) {
+                throw new BusinessException("Status không hợp lệ. Dùng ACTIVE hoặc INACTIVE");
+            }
+        } else {
+            property.setStatus(Property.Status.ACTIVE);
+        }
         propertyRepository.save(property);
         return PropertyResponse.fromEntity(property);
     }
@@ -71,9 +78,12 @@ public class PropertyService {
     public PropertyResponse update(UUID id, UpdatePropertyRequest request) {
         Property property = findById(id);
 
-        if (request.getName() != null) property.setName(request.getName());
-        if (request.getAddress() != null) property.setAddress(request.getAddress());
-        if (request.getDescription() != null) property.setDescription(request.getDescription());
+        if (request.getName() != null)
+            property.setName(request.getName());
+        if (request.getAddress() != null)
+            property.setAddress(request.getAddress());
+        if (request.getDescription() != null)
+            property.setDescription(request.getDescription());
         if (request.getStatus() != null) {
             try {
                 property.setStatus(Property.Status.valueOf(request.getStatus().toUpperCase()));
