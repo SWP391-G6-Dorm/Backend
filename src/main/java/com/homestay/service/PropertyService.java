@@ -44,8 +44,7 @@ public class PropertyService {
         return new PageResponse<>(
                 page.getContent().stream().map(PropertyResponse::fromEntity).collect(Collectors.toList()),
                 page.getNumber(), page.getSize(),
-                page.getTotalElements(), page.getTotalPages()
-        );
+                page.getTotalElements(), page.getTotalPages());
     }
 
     // Lấy chi tiết 1 property
@@ -79,9 +78,12 @@ public class PropertyService {
     public PropertyResponse update(UUID id, UpdatePropertyRequest request) {
         Property property = findById(id);
 
-        if (request.getName() != null) property.setName(request.getName());
-        if (request.getAddress() != null) property.setAddress(request.getAddress());
-        if (request.getDescription() != null) property.setDescription(request.getDescription());
+        if (request.getName() != null)
+            property.setName(request.getName());
+        if (request.getAddress() != null)
+            property.setAddress(request.getAddress());
+        if (request.getDescription() != null)
+            property.setDescription(request.getDescription());
         if (request.getStatus() != null) {
             try {
                 property.setStatus(Property.Status.valueOf(request.getStatus().toUpperCase()));
