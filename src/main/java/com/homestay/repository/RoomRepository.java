@@ -24,6 +24,10 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
     // Lọc phòng theo status
     Page<Room> findByStatus(Room.Status status, Pageable pageable);
 
+    // Đếm phòng theo status — dùng cho Dashboard KPI
+    long countByStatus(Room.Status status);
+
+
     // Tìm phòng available theo property
     Page<Room> findByPropertyIdAndStatus(UUID propertyId, Room.Status status, Pageable pageable);
 

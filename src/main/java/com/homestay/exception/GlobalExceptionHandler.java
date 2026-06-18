@@ -8,6 +8,9 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import com.homestay.exception.AccountNotVerifiedException;
+import com.homestay.exception.OtpExpiredException;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -36,6 +39,23 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleNotFound(ResourceNotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    // Tài khoản chưa xác thực email → 403 với errorCode + email để frontend redirect
+    @ExceptionHandler(AccountNotVerifiedException.class)
+    public ResponseEntity<ApiResponse<Map<String, String>>> handleAccountNotVerified(AccountNotVerifiedException ex) {
+        Map<String, String> data = new HashMap<>();
+        data.put("errorCode", "ACCOUNT_INACTIVE");
+        data.put("email", ex.getEmail());
+        ApiResponse<Map<String, String>> response = new ApiResponse<>(false, ex.getMessage(), data);
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+    }
+
+    // OTP hết hạn → 410 Gone (phân biệt với OTP sai 400)
+    @ExceptionHandler(OtpExpiredException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOtpExpired(OtpExpiredException ex) {
+        return ResponseEntity.status(HttpStatus.GONE)
                 .body(ApiResponse.error(ex.getMessage()));
     }
 

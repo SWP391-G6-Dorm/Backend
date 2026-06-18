@@ -8,7 +8,9 @@ import com.homestay.dto.request.*;
 import com.homestay.dto.response.AuthResponse;
 import com.homestay.entity.RefreshToken;
 import com.homestay.entity.User;
+import com.homestay.exception.AccountNotVerifiedException;
 import com.homestay.exception.BusinessException;
+import com.homestay.exception.OtpExpiredException;
 import com.homestay.exception.ResourceNotFoundException;
 import com.homestay.repository.RefreshTokenRepository;
 import com.homestay.repository.UserRepository;
@@ -176,6 +178,12 @@ public class AuthService {
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản với email này"));
 
+        // Không cho reset password với tài khoản Google (không có passwordHash)
+        if (user.getPasswordHash() == null) {
+            throw new BusinessException(
+                "Tài khoản này đăng nhập bằng Google. Vui lòng dùng nút 'Đăng nhập với Google'.");
+        }
+
         String otp = generateOtp();
         user.setOtpCode(otp);
         user.setOtpExpiredAt(LocalDateTime.now().plusMinutes(10));
@@ -253,7 +261,14 @@ public class AuthService {
     // Kiểm tra trạng thái tài khoản trước khi đăng nhập
     private void checkAccountStatus(User user) {
         if (user.getStatus() == User.Status.INACTIVE) {
-            throw new BusinessException("Tài khoản chưa xác thực email. Vui lòng kiểm tra hộp thư.");
+            // Tự động gửi lại OTP để người dùng có thể xác thực ngay
+            String otp = generateOtp();
+            user.setOtpCode(otp);
+            user.setOtpExpiredAt(LocalDateTime.now().plusMinutes(10));
+            userRepository.save(user);
+            sendOtpEmail(user.getEmail(), otp, "Xác thực tài khoản");
+
+            throw new AccountNotVerifiedException(user.getEmail());
         }
         if (user.getStatus() == User.Status.SUSPENDED) {
             throw new BusinessException("Tài khoản đã bị tạm khóa. Vui lòng liên hệ hỗ trợ.");
@@ -275,12 +290,13 @@ public class AuthService {
     }
 
     // Kiểm tra OTP đúng và còn hạn
+    // OTP sai → 400 BusinessException | OTP hết hạn → 410 OtpExpiredException
     private void validateOtp(User user, String otpCode) {
         if (user.getOtpCode() == null || !user.getOtpCode().equals(otpCode)) {
-            throw new BusinessException("Mã OTP không đúng");
+            throw new BusinessException("Mã OTP không đúng. Vui lòng kiểm tra lại.");
         }
         if (user.getOtpExpiredAt() == null || LocalDateTime.now().isAfter(user.getOtpExpiredAt())) {
-            throw new BusinessException("Mã OTP đã hết hạn. Vui lòng yêu cầu mã mới.");
+            throw new OtpExpiredException("Mã OTP đã hết hạn. Vui lòng yêu cầu gửi lại mã mới.");
         }
     }
 
