@@ -39,6 +39,10 @@ public class MaintenanceTicket {
     @JoinColumn(name = "room_id", nullable = false)
     private Room room;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "booking_id", nullable = false)
+    private Booking booking;
+
     @Column(name = "title", nullable = false, length = 200)
     private String title;
 
