@@ -15,6 +15,8 @@ import org.springframework.stereotype.Service;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import com.homestay.dto.response.BookingDetailResponse;
+import com.homestay.entity.Room;
 
 @Service
 public class BookingService {
@@ -25,6 +27,7 @@ public class BookingService {
         this.bookingRepository = bookingRepository;
     }
 
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public PageResponse<BookingSummaryResponse> getMyBookings(
             User currentUser,
             int page,
@@ -71,5 +74,69 @@ public class BookingService {
             field = "createdAt";
         }
         return PageRequest.of(page, size, Sort.by(direction, field));
+    }
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public PageResponse<BookingSummaryResponse> getAllBookings(
+            int page,
+            int size,
+            String status,
+            String search,
+            String sort
+    ) {
+        Pageable pageable = buildPageable(page, size, sort);
+        Booking.Status bookingStatus = (status != null && !status.isBlank() && !status.equalsIgnoreCase("ALL"))
+                ? Booking.Status.valueOf(status.trim().toUpperCase()) : null;
+
+        Page<Booking> result = bookingRepository.findAllWithFilters(bookingStatus, search, pageable);
+
+        return new PageResponse<>(
+                result.getContent().stream().map(BookingSummaryResponse::fromEntity).toList(),
+                result.getNumber(),
+                result.getSize(),
+                result.getTotalElements(),
+                result.getTotalPages()
+        );
+    }
+
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public BookingDetailResponse getBookingDetail(UUID id, User currentUser) {
+        Booking booking = bookingRepository.findById(id)
+                .orElseThrow(() -> new com.homestay.exception.ResourceNotFoundException("Booking không tồn tại"));
+
+        boolean isManager = currentUser.getRole() == User.Role.MANAGER;
+
+        if (!isManager && !booking.getCustomer().getId().equals(currentUser.getId())) {
+            throw new ForbiddenException("Không có quyền xem chi tiết đặt phòng này");
+        }
+
+        return BookingDetailResponse.fromEntity(booking);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public void markAsCheckedIn(UUID id) {
+        Booking booking = bookingRepository.findById(id)
+                .orElseThrow(() -> new com.homestay.exception.ResourceNotFoundException("Booking không tồn tại"));
+
+        if (booking.getStatus() != Booking.Status.CONFIRMED) {
+            throw new IllegalArgumentException("Chỉ có thể check-in khi booking ở trạng thái CONFIRMED");
+        }
+
+        booking.setStatus(Booking.Status.CHECKED_IN);
+        booking.getRoom().setStatus(Room.Status.OCCUPIED);
+        bookingRepository.save(booking);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public void markAsCheckedOut(UUID id) {
+        Booking booking = bookingRepository.findById(id)
+                .orElseThrow(() -> new com.homestay.exception.ResourceNotFoundException("Booking không tồn tại"));
+
+        if (booking.getStatus() != Booking.Status.CHECKED_IN) {
+            throw new IllegalArgumentException("Chỉ có thể check-out khi booking ở trạng thái CHECKED_IN");
+        }
+
+        booking.setStatus(Booking.Status.CHECKED_OUT);
+        booking.getRoom().setStatus(Room.Status.AVAILABLE);
+        bookingRepository.save(booking);
     }
 }
