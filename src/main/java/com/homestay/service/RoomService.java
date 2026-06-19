@@ -73,6 +73,15 @@ public class RoomService {
         return toPageResponse(page);
     }
 
+    // Lấy danh sách phòng nổi bật cho trang chủ (public - SCR-01)
+    public List<RoomSummaryResponse> getFeatured(int limit) {
+        Page<Room> page = roomRepository.findByStatus(
+                Room.Status.AVAILABLE,
+                org.springframework.data.domain.PageRequest.of(0, limit,
+                        org.springframework.data.domain.Sort.by("createdAt").descending()));
+        return page.getContent().stream().map(RoomSummaryResponse::fromEntity).toList();
+    }
+
     // Lấy chi tiết phòng (public - SCR-08)
     public RoomDetailResponse getById(UUID id) {
         Room room = findById(id);

@@ -45,6 +45,13 @@ public class RoomController {
         return ResponseEntity.ok(ApiResponse.ok(roomService.getAll(search, status, pageable)));
     }
 
+    // Phòng nổi bật cho trang chủ - public (SCR-01)
+    @GetMapping("/featured")
+    public ResponseEntity<ApiResponse<List<RoomSummaryResponse>>> getFeatured(
+            @RequestParam(defaultValue = "6") int limit) {
+        return ResponseEntity.ok(ApiResponse.ok(roomService.getFeatured(limit)));
+    }
+
     // Chi tiết phòng - public (SCR-08)
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<RoomDetailResponse>> getById(@PathVariable UUID id) {
