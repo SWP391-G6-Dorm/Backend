@@ -3,6 +3,7 @@ package com.homestay.service;
 import com.homestay.dto.request.CreatePropertyRequest;
 import com.homestay.dto.request.UpdatePropertyRequest;
 import com.homestay.dto.response.PageResponse;
+import com.homestay.dto.response.PropertyDetailResponse;
 import com.homestay.dto.response.PropertyResponse;
 import com.homestay.entity.Property;
 import com.homestay.exception.BusinessException;
@@ -51,6 +52,12 @@ public class PropertyService {
     public PropertyResponse getById(UUID id) {
         Property property = findById(id);
         return PropertyResponse.fromEntity(property);
+    }
+
+    // Lấy chi tiết đầy đủ 1 property — SCR-34 (stats + floors)
+    public PropertyDetailResponse getDetail(UUID id) {
+        Property property = findById(id);
+        return PropertyDetailResponse.fromEntity(property);
     }
 
     // Tạo property mới (Manager)
