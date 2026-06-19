@@ -3,7 +3,7 @@ spring:
     name: homestay-backend
 
   datasource:
-    url: jdbc:sqlserver://localhost:1433;databaseName=HomestayManagement;encrypt=true;trustServerCertificate=true
+    url: jdbc:sqlserver://localhost:1433;databaseName=HomestayManagement;encrypt=true;trustServerCertificate=true;sendStringParametersAsUnicode=true
     username: sa
     password: 123
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
@@ -55,6 +55,11 @@ spring:
 
 server:
   port: 8080
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
 
 # JWT config — fallback secret chỉ dùng trong dev, BẮT BUỘC override bằng .env trong production
 app:
@@ -70,3 +75,7 @@ app:
   # Thư mục lưu file upload
   upload:
     dir: uploads/
+
+  # Tự động thêm dữ liệu demo khi khởi động (dev)
+  seed:
+    enabled: true

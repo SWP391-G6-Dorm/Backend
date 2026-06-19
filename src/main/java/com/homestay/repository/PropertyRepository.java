@@ -16,6 +16,9 @@ public interface PropertyRepository extends JpaRepository<Property, UUID> {
     // Tìm kiếm property theo tên (manager)
     Page<Property> findByNameContainingIgnoreCase(String name, Pageable pageable);
 
+    // Đếm theo status
+    long countByStatus(Property.Status status);
+
     // Lọc theo status
     Page<Property> findByStatus(Property.Status status, Pageable pageable);
 
