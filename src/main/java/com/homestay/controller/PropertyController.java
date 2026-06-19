@@ -4,6 +4,7 @@ import com.homestay.dto.request.CreatePropertyRequest;
 import com.homestay.dto.request.UpdatePropertyRequest;
 import com.homestay.dto.response.ApiResponse;
 import com.homestay.dto.response.PageResponse;
+import com.homestay.dto.response.PropertyDetailResponse;
 import com.homestay.dto.response.PropertyResponse;
 import com.homestay.service.PropertyService;
 import jakarta.validation.Valid;
@@ -44,6 +45,12 @@ public class PropertyController {
         return ResponseEntity.ok(ApiResponse.ok(propertyService.getById(id)));
     }
 
+    // Xem chi tiết đầy đủ property — SCR-34 (stats + floors)
+    @GetMapping("/{id}/detail")
+    public ResponseEntity<ApiResponse<PropertyDetailResponse>> getDetail(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(propertyService.getDetail(id)));
+    }
+
     // Tạo property - chỉ Manager
     @PostMapping
     @PreAuthorize("hasRole('MANAGER')")
@@ -59,7 +66,7 @@ public class PropertyController {
     @PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<ApiResponse<PropertyResponse>> update(
             @PathVariable UUID id,
-            @RequestBody UpdatePropertyRequest request) {
+            @Valid @RequestBody UpdatePropertyRequest request) {
 
         return ResponseEntity.ok(ApiResponse.ok("Cập nhật property thành công", propertyService.update(id, request)));
     }
