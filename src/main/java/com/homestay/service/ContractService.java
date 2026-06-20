@@ -25,12 +25,17 @@ public class ContractService {
     private final com.homestay.repository.BookingRepository bookingRepository;
     private final PdfService pdfService;
     private final EmailService emailService;
+    private final NotificationService notificationService;
 
-    public ContractService(ContractRepository contractRepository, com.homestay.repository.BookingRepository bookingRepository, PdfService pdfService, EmailService emailService) {
+    public ContractService(ContractRepository contractRepository,
+                           com.homestay.repository.BookingRepository bookingRepository,
+                           PdfService pdfService, EmailService emailService,
+                           NotificationService notificationService) {
         this.contractRepository = contractRepository;
         this.bookingRepository = bookingRepository;
         this.pdfService = pdfService;
         this.emailService = emailService;
+        this.notificationService = notificationService;
     }
 
     @Transactional(readOnly = true)
@@ -89,7 +94,18 @@ public class ContractService {
                     newContract.setCheckOutDate(booking.getCheckOutDate());
                     newContract.setStatus(Contract.Status.ACTIVE);
                     newContract.setGeneratedAt(LocalDateTime.now());
-                    return contractRepository.save(newContract);
+                    Contract saved = contractRepository.save(newContract);
+
+                    // Gửi thông báo cho Customer khi tạo hợp đồng
+                    notificationService.sendNotification(
+                            booking.getCustomer().getId(),
+                            com.homestay.entity.Notification.Type.CONTRACT_GENERATED,
+                            "Contract Generated",
+                            "Your accommodation contract for booking has been generated and sent to your email.",
+                            saved.getId(), "Contract"
+                    );
+
+                    return saved;
                 });
 
         return ContractDetailResponse.fromEntity(contract);

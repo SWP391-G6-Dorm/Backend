@@ -22,9 +22,12 @@ import com.homestay.entity.Room;
 public class BookingService {
 
     private final BookingRepository bookingRepository;
+    private final NotificationService notificationService;
 
-    public BookingService(BookingRepository bookingRepository) {
+    public BookingService(BookingRepository bookingRepository,
+                          NotificationService notificationService) {
         this.bookingRepository = bookingRepository;
+        this.notificationService = notificationService;
     }
 
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
@@ -124,6 +127,16 @@ public class BookingService {
         booking.setStatus(Booking.Status.CHECKED_IN);
         booking.getRoom().setStatus(Room.Status.OCCUPIED);
         bookingRepository.save(booking);
+
+        // Gửi thông báo cho Customer
+        String roomName = booking.getRoom().getRoomNumber();
+        notificationService.sendNotification(
+                booking.getCustomer().getId(),
+                com.homestay.entity.Notification.Type.BOOKING_CONFIRMED,
+                "Booking Confirmed",
+                "Your booking for " + roomName + " has been confirmed. Check-in on " + booking.getCheckInDate() + ".",
+                booking.getId(), "Booking"
+        );
     }
 
     @org.springframework.transaction.annotation.Transactional
@@ -138,5 +151,15 @@ public class BookingService {
         booking.setStatus(Booking.Status.CHECKED_OUT);
         booking.getRoom().setStatus(Room.Status.AVAILABLE);
         bookingRepository.save(booking);
+
+        // Gửi thông báo cho Customer
+        String roomName = booking.getRoom().getRoomNumber();
+        notificationService.sendNotification(
+                booking.getCustomer().getId(),
+                com.homestay.entity.Notification.Type.BOOKING_CONFIRMED,
+                "Check-out Complete",
+                "Thank you for your stay at " + roomName + ". We hope to see you again!",
+                booking.getId(), "Booking"
+        );
     }
 }
