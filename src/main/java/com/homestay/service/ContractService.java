@@ -36,8 +36,7 @@ public class ContractService {
     @Transactional(readOnly = true)
     public PageResponse<ContractSummaryResponse> getAllContracts(int page, int size, String status, String search, String sort) {
         Pageable pageable = buildPageable(page, size, sort);
-        Contract.Status contractStatus = (status != null && !status.isBlank() && !status.equalsIgnoreCase("ALL"))
-                ? Contract.Status.valueOf(status.trim().toUpperCase()) : null;
+        Contract.Status contractStatus = parseStatus(status);
 
         Page<Contract> result = contractRepository.findAllWithFilters(contractStatus, search, pageable);
 
@@ -49,6 +48,24 @@ public class ContractService {
                 result.getTotalPages()
         );
     }
+
+    @Transactional(readOnly = true)
+    public PageResponse<ContractSummaryResponse> getMyContracts(User currentUser, int page, int size, String status, String search, String sort) {
+        Pageable pageable = buildPageable(page, size, sort);
+        Contract.Status contractStatus = parseStatus(status);
+        String searchParam = (search != null && !search.isBlank()) ? search.trim() : null;
+
+        Page<Contract> result = contractRepository.findByCustomerWithFilters(currentUser.getId(), contractStatus, searchParam, pageable);
+
+        return new PageResponse<>(
+                result.getContent().stream().map(ContractSummaryResponse::fromEntity).toList(),
+                result.getNumber(),
+                result.getSize(),
+                result.getTotalElements(),
+                result.getTotalPages()
+        );
+    }
+
 
     @Transactional(readOnly = true)
     public ContractDetailResponse getContractDetail(UUID id, User currentUser) {
@@ -140,4 +157,14 @@ public class ContractService {
 
         return PageRequest.of(page, size, Sort.by(direction, field));
     }
+
+    private Contract.Status parseStatus(String status) {
+        if (status == null || status.isBlank() || status.equalsIgnoreCase("ALL")) return null;
+        try {
+            return Contract.Status.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
 }
+
