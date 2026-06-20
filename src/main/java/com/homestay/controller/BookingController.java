@@ -24,15 +24,47 @@ public class BookingController {
 
     /** SCR-11 / SCR-18 — danh sách booking của khách hàng đang đăng nhập */
     @GetMapping
-    public ResponseEntity<ApiResponse<PageResponse<BookingSummaryResponse>>> getMyBookings(
+    public ResponseEntity<ApiResponse<PageResponse<BookingSummaryResponse>>> getBookings(
             @AuthenticationPrincipal User currentUser,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "createdAt,desc") String sort
     ) {
-        PageResponse<BookingSummaryResponse> data =
-                bookingService.getMyBookings(currentUser, page, size, status, sort);
+        boolean isManager = currentUser.getRole() == User.Role.MANAGER;
+
+        if (isManager) {
+            PageResponse<BookingSummaryResponse> data =
+                    bookingService.getAllBookings(page, size, status, search, sort);
+            return ResponseEntity.ok(ApiResponse.ok(data));
+        } else {
+            PageResponse<BookingSummaryResponse> data =
+                    bookingService.getMyBookings(currentUser, page, size, status, sort);
+            return ResponseEntity.ok(ApiResponse.ok(data));
+        }
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<ApiResponse<com.homestay.dto.response.BookingDetailResponse>> getBookingDetail(
+            @org.springframework.web.bind.annotation.PathVariable java.util.UUID id,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        com.homestay.dto.response.BookingDetailResponse data = bookingService.getBookingDetail(id, currentUser);
         return ResponseEntity.ok(ApiResponse.ok(data));
+    }
+
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('MANAGER')")
+    @org.springframework.web.bind.annotation.PatchMapping("/{id}/check-in")
+    public ResponseEntity<ApiResponse<Void>> checkIn(@org.springframework.web.bind.annotation.PathVariable java.util.UUID id) {
+        bookingService.markAsCheckedIn(id);
+        return ResponseEntity.ok(ApiResponse.ok(null));
+    }
+
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('MANAGER')")
+    @org.springframework.web.bind.annotation.PatchMapping("/{id}/check-out")
+    public ResponseEntity<ApiResponse<Void>> checkOut(@org.springframework.web.bind.annotation.PathVariable java.util.UUID id) {
+        bookingService.markAsCheckedOut(id);
+        return ResponseEntity.ok(ApiResponse.ok(null));
     }
 }
