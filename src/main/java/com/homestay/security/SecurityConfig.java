@@ -72,6 +72,9 @@ public class SecurityConfig {
 
                 .requestMatchers("/error").permitAll()
 
+                // Cho phép truy cập file upload (ảnh) không cần đăng nhập
+                .requestMatchers("/uploads/**").permitAll()
+
                 // Tất cả còn lại phải đăng nhập
                 .anyRequest().authenticated()
             );

@@ -60,8 +60,11 @@ public class MaintenanceTicketController {
     public ResponseEntity<ApiResponse<Object>> updateTicket(
             @AuthenticationPrincipal User currentUser,
             @PathVariable UUID id,
-            @RequestBody Map<String, String> payload) {
-        Object ticket = ticketService.updateTicketContent(currentUser.getId(), id, payload.get("title"), payload.get("description"));
+            @RequestParam(value = "title", required = false) String title,
+            @RequestParam(value = "description", required = false) String description,
+            @RequestParam(value = "existingPhotoUrls", required = false) List<String> existingPhotoUrls,
+            @RequestParam(value = "photos", required = false) List<MultipartFile> photos) {
+        Object ticket = ticketService.updateTicketContent(currentUser.getId(), id, title, description, existingPhotoUrls, photos);
         return ResponseEntity.ok(ApiResponse.ok("Maintenance request updated", ticket));
     }
 
