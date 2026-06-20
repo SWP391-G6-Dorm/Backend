@@ -182,5 +182,18 @@ public class ContractService {
             return null;
         }
     }
+
+    @Transactional
+    public void autoGenerateAndSendContract(UUID bookingId, User currentUser) {
+        ContractDetailResponse contractResp = getOrCreateContractByBookingId(bookingId, currentUser);
+        // Chạy việc gửi mail trên một luồng riêng để không block API (tránh Axios timeout)
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                resendContractEmail(contractResp.getId(), null);
+            } catch (Exception e) {
+                System.err.println("Lỗi khi gửi email hợp đồng (chưa cấu hình SMTP): " + e.getMessage());
+            }
+        });
+    }
 }
 

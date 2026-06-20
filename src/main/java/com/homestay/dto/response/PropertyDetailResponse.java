@@ -1,6 +1,5 @@
 package com.homestay.dto.response;
 
-import com.homestay.entity.Floor;
 import com.homestay.entity.Property;
 import com.homestay.entity.Room;
 import lombok.Data;
