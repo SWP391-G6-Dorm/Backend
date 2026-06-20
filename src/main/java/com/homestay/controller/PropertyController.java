@@ -6,6 +6,8 @@ import com.homestay.dto.response.ApiResponse;
 import com.homestay.dto.response.PageResponse;
 import com.homestay.dto.response.PropertyDetailResponse;
 import com.homestay.dto.response.PropertyResponse;
+import com.homestay.dto.response.PropertyStructureResponse;
+import com.homestay.service.FloorService;
 import com.homestay.service.PropertyService;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.PageRequest;
@@ -22,9 +24,11 @@ import java.util.UUID;
 public class PropertyController {
 
     private final PropertyService propertyService;
+    private final FloorService floorService;
 
-    public PropertyController(PropertyService propertyService) {
+    public PropertyController(PropertyService propertyService, FloorService floorService) {
         this.propertyService = propertyService;
+        this.floorService = floorService;
     }
 
     // Lấy danh sách property - public (SCR-01, SCR-07)
@@ -59,6 +63,13 @@ public class PropertyController {
 
         PropertyResponse res = propertyService.create(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok("Tạo property thành công", res));
+    }
+
+    // SCR-37: Xem cây cấu trúc Property → Floors → Rooms — chỉ Manager
+    @GetMapping("/{id}/structure")
+    @PreAuthorize("hasRole('MANAGER')")
+    public ResponseEntity<ApiResponse<PropertyStructureResponse>> getStructure(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(floorService.getStructure(id)));
     }
 
     // Cập nhật property - chỉ Manager

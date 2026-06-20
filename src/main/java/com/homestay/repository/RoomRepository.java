@@ -27,7 +27,6 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
     // Đếm phòng theo status — dùng cho Dashboard KPI
     long countByStatus(Room.Status status);
 
-
     // Tìm phòng available theo property
     Page<Room> findByPropertyIdAndStatus(UUID propertyId, Room.Status status, Pageable pageable);
 
@@ -36,7 +35,6 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
             String roomNumber, String roomType, Pageable pageable);
 
     // Kiểm tra phòng có bị trùng lịch không
-    // Booking trùng khi: checkIn mới < checkOut cũ VÀ checkOut mới > checkIn cũ
     @Query("""
         SELECT COUNT(b) > 0 FROM Booking b
         WHERE b.room.id = :roomId
@@ -57,4 +55,33 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
         ORDER BY b.checkInDate
     """)
     List<Object[]> findBookedDateRanges(@Param("roomId") UUID roomId);
+
+    // SCR-39: Combined filter dành cho Manager — hỗ trợ search + status + propertyId + floorId + roomType
+    @Query("""
+        SELECT r FROM Room r
+        WHERE (:search IS NULL OR
+               LOWER(r.roomNumber) LIKE LOWER(CONCAT('%', :search, '%')) OR
+               LOWER(r.roomType)   LIKE LOWER(CONCAT('%', :search, '%')))
+        AND (:status    IS NULL OR r.status        = :status)
+        AND (:propertyId IS NULL OR r.property.id = :propertyId)
+        AND (:floorId    IS NULL OR r.floor.id    = :floorId)
+        AND (:roomType   IS NULL OR LOWER(r.roomType) = LOWER(:roomType))
+    """)
+    Page<Room> findWithFilters(
+            @Param("search")     String search,
+            @Param("status")     Room.Status status,
+            @Param("propertyId") UUID propertyId,
+            @Param("floorId")    UUID floorId,
+            @Param("roomType")   String roomType,
+            Pageable pageable
+    );
+
+    // SCR-39: Kiểm tra phòng có booking active không (trước khi xóa)
+    @Query("""
+        SELECT COUNT(b) > 0 FROM Booking b
+        WHERE b.room.id = :roomId
+        AND b.status NOT IN ('CANCELLED', 'COMPLETED')
+    """)
+    boolean hasActiveBookings(@Param("roomId") UUID roomId);
 }
+

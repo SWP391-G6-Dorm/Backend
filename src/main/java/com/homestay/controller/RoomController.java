@@ -98,6 +98,36 @@ public class RoomController {
         return ResponseEntity.ok(ApiResponse.ok("Cập nhật trạng thái thành công", roomService.updateStatus(id, request)));
     }
 
+    // SCR-39: Danh sách phòng dành cho Manager — có full filter
+    @GetMapping("/manager")
+    @PreAuthorize("hasRole('MANAGER')")
+    public ResponseEntity<ApiResponse<PageResponse<RoomSummaryResponse>>> getAllForManager(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String propertyId,
+            @RequestParam(required = false) String floorId,
+            @RequestParam(required = false) String roomType,
+            @RequestParam(defaultValue = "0")  int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "createdAt,desc") String sort) {
+
+        String[] sortParts = sort.split(",");
+        Sort.Direction dir = sortParts.length > 1 && sortParts[1].equalsIgnoreCase("asc")
+                ? Sort.Direction.ASC : Sort.Direction.DESC;
+        PageRequest pageable = PageRequest.of(page, size, Sort.by(dir, sortParts[0]));
+
+        return ResponseEntity.ok(ApiResponse.ok(
+                roomService.getAllForManager(search, status, propertyId, floorId, roomType, pageable)));
+    }
+
+    // SCR-39: Xóa phòng — chỉ Manager, chỉ khi không có booking active
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('MANAGER')")
+    public ResponseEntity<ApiResponse<Void>> deleteRoom(@PathVariable UUID id) {
+        roomService.deleteRoom(id);
+        return ResponseEntity.ok(ApiResponse.ok("Xóa phòng thành công"));
+    }
+
     // Upload ảnh phòng - chỉ Manager (SCR-43)
     @PostMapping("/{id}/images")
     @PreAuthorize("hasRole('MANAGER')")

@@ -41,4 +41,11 @@ public interface PropertyRepository extends JpaRepository<Property, UUID> {
             @Param("keyword") String keyword,
             @Param("status") Property.Status status,
             Pageable pageable);
+
+    // SCR-37: Load property với floors và rooms (eager) — tránh N+1
+    @Query("SELECT DISTINCT p FROM Property p " +
+           "LEFT JOIN FETCH p.floors f " +
+           "LEFT JOIN FETCH f.rooms " +
+           "WHERE p.id = :id")
+    java.util.Optional<Property> findByIdWithFloorsAndRooms(@Param("id") UUID id);
 }
