@@ -1,6 +1,7 @@
 package com.homestay.controller;
 
 import com.homestay.dto.request.CreateFloorRequest;
+import com.homestay.dto.request.UpdateFloorRequest;
 import com.homestay.dto.response.ApiResponse;
 import com.homestay.dto.response.FloorResponse;
 import com.homestay.service.FloorService;
@@ -23,7 +24,7 @@ public class FloorController {
         this.floorService = floorService;
     }
 
-    // Lấy danh sách tầng của property - public
+    // SCR-37/38: Lấy danh sách tầng của property
     @GetMapping
     public ResponseEntity<ApiResponse<List<FloorResponse>>> getByProperty(
             @RequestParam UUID propertyId) {
@@ -31,7 +32,7 @@ public class FloorController {
         return ResponseEntity.ok(ApiResponse.ok(floorService.getByProperty(propertyId)));
     }
 
-    // Tạo tầng mới - chỉ Manager
+    // SCR-37/38: Tạo tầng mới — chỉ Manager
     @PostMapping
     @PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<ApiResponse<FloorResponse>> create(
@@ -41,7 +42,18 @@ public class FloorController {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok("Tạo tầng thành công", res));
     }
 
-    // Xóa tầng - chỉ Manager
+    // SCR-38: Cập nhật tầng — chỉ Manager
+    @PutMapping("/{id}")
+    @PreAuthorize("hasRole('MANAGER')")
+    public ResponseEntity<ApiResponse<FloorResponse>> update(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateFloorRequest request) {
+
+        FloorResponse res = floorService.update(id, request);
+        return ResponseEntity.ok(ApiResponse.ok("Cập nhật tầng thành công", res));
+    }
+
+    // SCR-38: Xóa tầng — chỉ Manager
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID id) {

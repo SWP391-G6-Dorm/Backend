@@ -105,7 +105,42 @@ public class RoomService {
         return new AvailabilityResponse(!hasOverlap, bookedRanges);
     }
 
-    // ── Manager API ────────────────────────────────────────────────────────────
+    // ── Manager API ────────────────────────────────────────────────
+
+    // SCR-39: Manager room list với combined filter
+    public PageResponse<RoomSummaryResponse> getAllForManager(
+            String search, String status, String propertyIdStr,
+            String floorIdStr, String roomType, Pageable pageable) {
+
+        Room.Status statusEnum = null;
+        if (status != null && !status.isBlank()) {
+            try { statusEnum = Room.Status.valueOf(status.toUpperCase()); }
+            catch (IllegalArgumentException ignored) {}
+        }
+
+        UUID propertyId = (propertyIdStr != null && !propertyIdStr.isBlank())
+                ? UUID.fromString(propertyIdStr) : null;
+        UUID floorId = (floorIdStr != null && !floorIdStr.isBlank())
+                ? UUID.fromString(floorIdStr) : null;
+        String cleanSearch    = (search   != null && !search.isBlank())    ? search.trim()    : null;
+        String cleanRoomType  = (roomType != null && !roomType.isBlank())  ? roomType.trim()  : null;
+
+        Page<Room> page = roomRepository.findWithFilters(
+                cleanSearch, statusEnum, propertyId, floorId, cleanRoomType, pageable);
+        return toPageResponse(page);
+    }
+
+    // SCR-39: Xóa phòng — chỉ cho phép khi không có booking active
+    @Transactional
+    public void deleteRoom(UUID id) {
+        Room room = findById(id);
+
+        if (roomRepository.hasActiveBookings(id)) {
+            throw new BusinessException("Không thể xóa phòng đang có booking. Hãy hủy hoặc hoàn thành các booking trước.");
+        }
+
+        roomRepository.delete(room);
+    }
 
     // Tạo phòng mới
     @Transactional

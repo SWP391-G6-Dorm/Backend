@@ -13,8 +13,9 @@ public class FloorResponse {
     private UUID propertyId;
     private Integer floorNumber;
     private String description;
-    private int totalRooms;
+    private int roomCount;          // alias: was totalRooms, renamed to match frontend spec
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 
     public static FloorResponse fromEntity(Floor floor) {
         FloorResponse res = new FloorResponse();
@@ -22,8 +23,9 @@ public class FloorResponse {
         res.setPropertyId(floor.getProperty().getId());
         res.setFloorNumber(floor.getFloorNumber());
         res.setDescription(floor.getDescription());
-        res.setTotalRooms(floor.getRooms() != null ? floor.getRooms().size() : 0);
+        res.setRoomCount(floor.getRooms() != null ? floor.getRooms().size() : 0);
         res.setCreatedAt(floor.getCreatedAt());
+        res.setUpdatedAt(floor.getUpdatedAt());
         return res;
     }
 }
