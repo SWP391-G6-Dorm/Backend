@@ -24,13 +24,16 @@ public class BookingService {
     private final BookingRepository bookingRepository;
     private final NotificationService notificationService;
     private final com.homestay.repository.RoomRepository roomRepository;
+    private final com.homestay.repository.ReviewRepository reviewRepository;
 
     public BookingService(BookingRepository bookingRepository,
                           NotificationService notificationService,
-                          com.homestay.repository.RoomRepository roomRepository) {
+                          com.homestay.repository.RoomRepository roomRepository,
+                          com.homestay.repository.ReviewRepository reviewRepository) {
         this.bookingRepository = bookingRepository;
         this.notificationService = notificationService;
         this.roomRepository = roomRepository;
+        this.reviewRepository = reviewRepository;
     }
 
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
@@ -50,14 +53,17 @@ public class BookingService {
 
         if (status != null && !status.isBlank()) {
             Booking.Status bookingStatus = Booking.Status.valueOf(status.trim().toUpperCase());
-            result = bookingRepository.findByCustomerIdAndStatusOrderByCreatedAtDesc(
+            result = bookingRepository.findByCustomerIdAndStatus(
                     currentUser.getId(), bookingStatus, pageable);
         } else {
-            result = bookingRepository.findByCustomerIdOrderByCreatedAtDesc(currentUser.getId(), pageable);
+            result = bookingRepository.findByCustomerId(currentUser.getId(), pageable);
         }
 
         return new PageResponse<>(
-                result.getContent().stream().map(BookingSummaryResponse::fromEntity).toList(),
+                result.getContent().stream().map(booking -> {
+                    boolean isReviewed = reviewRepository.existsByBooking_Id(booking.getId());
+                    return BookingSummaryResponse.fromEntity(booking, isReviewed);
+                }).toList(),
                 result.getNumber(),
                 result.getSize(),
                 result.getTotalElements(),
@@ -96,7 +102,10 @@ public class BookingService {
         Page<Booking> result = bookingRepository.findAllWithFilters(bookingStatus, search, pageable);
 
         return new PageResponse<>(
-                result.getContent().stream().map(BookingSummaryResponse::fromEntity).toList(),
+                result.getContent().stream().map(booking -> {
+                    boolean isReviewed = reviewRepository.existsByBooking_Id(booking.getId());
+                    return BookingSummaryResponse.fromEntity(booking, isReviewed);
+                }).toList(),
                 result.getNumber(),
                 result.getSize(),
                 result.getTotalElements(),
@@ -115,7 +124,8 @@ public class BookingService {
             throw new ForbiddenException("Không có quyền xem chi tiết đặt phòng này");
         }
 
-        return BookingDetailResponse.fromEntity(booking);
+        boolean isReviewed = reviewRepository.existsByBooking_Id(booking.getId());
+        return BookingDetailResponse.fromEntity(booking, isReviewed);
     }
 
     @org.springframework.transaction.annotation.Transactional

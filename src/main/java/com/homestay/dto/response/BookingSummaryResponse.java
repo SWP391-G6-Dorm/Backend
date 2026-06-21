@@ -27,8 +27,13 @@ public class BookingSummaryResponse {
     private BigDecimal totalAmount;
     private String status;
     private LocalDateTime createdAt;
+    private boolean isReviewed;
 
     public static BookingSummaryResponse fromEntity(Booking booking) {
+        return fromEntity(booking, false);
+    }
+
+    public static BookingSummaryResponse fromEntity(Booking booking, boolean isReviewed) {
         return new BookingSummaryResponse(
                 booking.getId(),
                 booking.getCustomer().getFullName(),
@@ -41,7 +46,8 @@ public class BookingSummaryResponse {
                 booking.getGuestCount(),
                 booking.getTotalAmount(),
                 booking.getStatus().name(),
-                booking.getCreatedAt()
+                booking.getCreatedAt(),
+                isReviewed
         );
     }
 }
