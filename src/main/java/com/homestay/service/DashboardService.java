@@ -44,11 +44,11 @@ public class DashboardService {
                 .totalRooms(totalRooms)
                 .availableRooms(availableRooms)
                 .occupiedRooms(occupiedRooms)
-                // TODO: inject BookingRepository khi entity Booking được tạo (SCR-17)
+                // LATER: inject BookingRepository khi entity Booking được tạo (SCR-17)
                 .bookingsThisMonth(0L)
                 .checkInsToday(0L)
                 .checkOutsToday(0L)
-                // TODO: inject PaymentRepository khi entity Payment được tạo (SCR-47)
+                // LATER: inject PaymentRepository khi entity Payment được tạo (SCR-47)
                 .monthlyRevenue(BigDecimal.ZERO)
                 .build();
 
@@ -61,14 +61,14 @@ public class DashboardService {
                 .pendingDeposit(pendingRooms)
                 .build();
 
-        // ── Chart data (TODO khi có Booking/Payment) ──────────────────────────
+        // ── Chart data (LATER khi có Booking/Payment) ──────────────────────────
 
         return DashboardResponse.builder()
                 .kpis(kpis)
                 .occupancyData(occupancyData)
-                .revenueChartData(List.of())       // TODO: SCR-47
-                .bookingTrendData(List.of())         // TODO: SCR-17
-                .recentBookings(List.of())           // TODO: SCR-47
+                .revenueChartData(List.of())       // LATER: SCR-47
+                .bookingTrendData(List.of())         // LATER: SCR-17
+                .recentBookings(List.of())           // LATER: SCR-47
                 .build();
     }
 }
