@@ -19,6 +19,8 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     Page<Booking> findByCustomerIdAndStatusOrderByCreatedAtDesc(UUID customerId, Booking.Status status, Pageable pageable);
 
+    long countByCustomerId(UUID customerId);
+
     @org.springframework.data.jpa.repository.Query("SELECT b FROM Booking b WHERE " +
            "(:status IS NULL OR b.status = :status) AND " +
            "(:search IS NULL OR LOWER(b.customer.fullName) LIKE LOWER(CONCAT('%', :search, '%')) " +

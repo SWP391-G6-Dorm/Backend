@@ -67,4 +67,13 @@ public class BookingController {
         bookingService.markAsCheckedOut(id);
         return ResponseEntity.ok(ApiResponse.ok(null));
     }
+
+    @org.springframework.web.bind.annotation.PostMapping
+    public ResponseEntity<ApiResponse<com.homestay.dto.response.BookingDetailResponse>> createBooking(
+            @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody com.homestay.dto.request.CreateBookingRequest request,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        com.homestay.dto.response.BookingDetailResponse data = bookingService.createBooking(request, currentUser);
+        return ResponseEntity.ok(ApiResponse.ok("Đặt phòng thành công, vui lòng thanh toán cọc", data));
+    }
 }

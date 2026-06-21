@@ -20,13 +20,16 @@ public class UserService {
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
+    private final com.homestay.repository.BookingRepository bookingRepository;
 
     public UserService(UserRepository userRepository,
                        RefreshTokenRepository refreshTokenRepository,
-                       PasswordEncoder passwordEncoder) {
+                       PasswordEncoder passwordEncoder,
+                       com.homestay.repository.BookingRepository bookingRepository) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
+        this.bookingRepository = bookingRepository;
     }
 
     // Lấy thông tin profile của chính mình
@@ -85,5 +88,58 @@ public class UserService {
     private User findUserById(UUID userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng"));
+    }
+
+    // --- MANAGER API ---
+    @Transactional(readOnly = true)
+    public com.homestay.dto.response.PageResponse<com.homestay.dto.response.CustomerSummaryResponse> getAllCustomers(int page, int size, String statusStr, String search) {
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size, org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt"));
+        User.Status status = null;
+        if (statusStr != null && !statusStr.isBlank() && !statusStr.equalsIgnoreCase("ALL")) {
+            status = User.Status.valueOf(statusStr.toUpperCase());
+        }
+
+        org.springframework.data.domain.Page<User> usersPage = userRepository.findByRoleWithFilters(User.Role.CUSTOMER, status, search != null && !search.isBlank() ? search : null, pageable);
+
+        java.util.List<com.homestay.dto.response.CustomerSummaryResponse> content = usersPage.getContent().stream().map(u -> com.homestay.dto.response.CustomerSummaryResponse.builder()
+                .id(u.getId())
+                .fullName(u.getFullName())
+                .email(u.getEmail())
+                .phone(u.getPhone())
+                .status(u.getStatus().name())
+                .createdAt(u.getCreatedAt())
+                .bookingCount(bookingRepository.countByCustomerId(u.getId()))
+                .build()).toList();
+
+        return new com.homestay.dto.response.PageResponse<>(content, usersPage.getNumber(), usersPage.getSize(), usersPage.getTotalElements(), usersPage.getTotalPages());
+    }
+
+    @Transactional(readOnly = true)
+    public com.homestay.dto.response.CustomerDetailResponse getCustomerDetail(UUID id) {
+        User user = findUserById(id);
+        if (user.getRole() != User.Role.CUSTOMER) {
+            throw new BusinessException("Người dùng không phải là Customer");
+        }
+
+        return com.homestay.dto.response.CustomerDetailResponse.builder()
+                .id(user.getId())
+                .fullName(user.getFullName())
+                .email(user.getEmail())
+                .phone(user.getPhone())
+                .status(user.getStatus().name())
+                .createdAt(user.getCreatedAt())
+                .bookingCount(bookingRepository.countByCustomerId(user.getId()))
+                .build();
+    }
+
+    @Transactional
+    public void updateCustomerStatus(UUID id, String statusStr) {
+        User user = findUserById(id);
+        if (user.getRole() != User.Role.CUSTOMER) {
+            throw new BusinessException("Chỉ có thể thay đổi trạng thái của Customer");
+        }
+        User.Status newStatus = User.Status.valueOf(statusStr.toUpperCase());
+        user.setStatus(newStatus);
+        userRepository.save(user);
     }
 }

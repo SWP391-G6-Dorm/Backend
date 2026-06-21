@@ -32,4 +32,14 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     // Lấy tất cả customer (không lọc)
     Page<User> findByRole(User.Role role, Pageable pageable);
+
+    @org.springframework.data.jpa.repository.Query("SELECT u FROM User u WHERE u.role = :role AND " +
+            "(:status IS NULL OR u.status = :status) AND " +
+            "(:search IS NULL OR LOWER(u.fullName) LIKE LOWER(CONCAT('%', :search, '%')) " +
+            "OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')))")
+    Page<User> findByRoleWithFilters(
+            @org.springframework.data.repository.query.Param("role") User.Role role,
+            @org.springframework.data.repository.query.Param("status") User.Status status,
+            @org.springframework.data.repository.query.Param("search") String search,
+            Pageable pageable);
 }
