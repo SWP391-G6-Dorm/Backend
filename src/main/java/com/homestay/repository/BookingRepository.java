@@ -22,6 +22,8 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     // SCR-40: Booking history for a specific room (Manager view)
     Page<Booking> findByRoomIdOrderByCheckInDateDesc(UUID roomId, Pageable pageable);
 
+    long countByCustomerId(UUID customerId);
+
     @org.springframework.data.jpa.repository.Query("SELECT b FROM Booking b WHERE " +
            "(:status IS NULL OR b.status = :status) AND " +
            "(:search IS NULL OR LOWER(b.customer.fullName) LIKE LOWER(CONCAT('%', :search, '%')) " +

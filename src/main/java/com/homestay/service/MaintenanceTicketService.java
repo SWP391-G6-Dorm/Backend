@@ -23,15 +23,18 @@ public class MaintenanceTicketService {
     private final BookingRepository bookingRepository;
     private final UserRepository userRepository;
     private final RoomRepository roomRepository;
+    private final NotificationService notificationService;
 
     public MaintenanceTicketService(MaintenanceTicketRepository ticketRepository,
                                     BookingRepository bookingRepository,
                                     UserRepository userRepository,
-                                    RoomRepository roomRepository) {
+                                    RoomRepository roomRepository,
+                                    NotificationService notificationService) {
         this.ticketRepository = ticketRepository;
         this.bookingRepository = bookingRepository;
         this.userRepository = userRepository;
         this.roomRepository = roomRepository;
+        this.notificationService = notificationService;
     }
 
     // ── Helper: Convert MaintenanceTicket entity → Map for frontend ──
@@ -305,6 +308,17 @@ public class MaintenanceTicketService {
         }
 
         MaintenanceTicket updated = ticketRepository.save(ticket);
+
+        // Gửi thông báo cho Customer
+        notificationService.sendNotification(
+                ticket.getCustomer().getId(),
+                Notification.Type.MAINTENANCE_UPDATED,
+                "Maintenance Update",
+                String.format("Your ticket '%s' has been updated to %s.", ticket.getTitle(), request.getStatus()),
+                ticket.getId(),
+                "MaintenanceTicket"
+        );
+
         return ticketToMap(updated);
     }
 

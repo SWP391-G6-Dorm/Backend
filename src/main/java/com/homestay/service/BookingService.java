@@ -22,9 +22,15 @@ import com.homestay.entity.Room;
 public class BookingService {
 
     private final BookingRepository bookingRepository;
+    private final NotificationService notificationService;
+    private final com.homestay.repository.RoomRepository roomRepository;
 
-    public BookingService(BookingRepository bookingRepository) {
+    public BookingService(BookingRepository bookingRepository,
+                          NotificationService notificationService,
+                          com.homestay.repository.RoomRepository roomRepository) {
         this.bookingRepository = bookingRepository;
+        this.notificationService = notificationService;
+        this.roomRepository = roomRepository;
     }
 
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
@@ -124,6 +130,16 @@ public class BookingService {
         booking.setStatus(Booking.Status.CHECKED_IN);
         booking.getRoom().setStatus(Room.Status.OCCUPIED);
         bookingRepository.save(booking);
+
+        // Gửi thông báo cho Customer
+        String roomName = booking.getRoom().getRoomNumber();
+        notificationService.sendNotification(
+                booking.getCustomer().getId(),
+                com.homestay.entity.Notification.Type.BOOKING_CONFIRMED,
+                "Booking Confirmed",
+                "Your booking for " + roomName + " has been confirmed. Check-in on " + booking.getCheckInDate() + ".",
+                booking.getId(), "Booking"
+        );
     }
 
     @org.springframework.transaction.annotation.Transactional
@@ -138,5 +154,69 @@ public class BookingService {
         booking.setStatus(Booking.Status.CHECKED_OUT);
         booking.getRoom().setStatus(Room.Status.AVAILABLE);
         bookingRepository.save(booking);
+
+        // Gửi thông báo cho Customer
+        String roomName = booking.getRoom().getRoomNumber();
+        notificationService.sendNotification(
+                booking.getCustomer().getId(),
+                com.homestay.entity.Notification.Type.BOOKING_CONFIRMED,
+                "Check-out Complete",
+                "Thank you for your stay at " + roomName + ". We hope to see you again!",
+                booking.getId(), "Booking"
+        );
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public BookingDetailResponse createBooking(com.homestay.dto.request.CreateBookingRequest request, User currentUser) {
+        if (currentUser.getRole() != User.Role.CUSTOMER) {
+            throw new ForbiddenException("Chỉ khách hàng mới có thể đặt phòng");
+        }
+
+        if (!request.getCheckOutDate().isAfter(request.getCheckInDate())) {
+            throw new IllegalArgumentException("Ngày check-out phải sau ngày check-in");
+        }
+
+        if (request.getCheckInDate().isBefore(java.time.LocalDate.now())) {
+            throw new IllegalArgumentException("Ngày check-in không được trong quá khứ");
+        }
+
+        Room room = roomRepository.findById(request.getRoomId())
+                .orElseThrow(() -> new com.homestay.exception.ResourceNotFoundException("Phòng không tồn tại"));
+
+        if (room.getStatus() != Room.Status.AVAILABLE) {
+            throw new IllegalArgumentException("Phòng hiện không trống để đặt");
+        }
+
+        if (request.getGuestCount() > room.getCapacity()) {
+            throw new IllegalArgumentException("Số người vượt quá sức chứa của phòng");
+        }
+
+        boolean isOverlap = roomRepository.existsOverlapBooking(room.getId(), request.getCheckInDate(), request.getCheckOutDate());
+        if (isOverlap) {
+            throw new IllegalArgumentException("Phòng đã có người đặt trong khoảng thời gian này");
+        }
+
+        long nights = java.time.temporal.ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate());
+        if (nights <= 0) nights = 1;
+
+        java.math.BigDecimal totalAmount = room.getPricePerNight().multiply(java.math.BigDecimal.valueOf(nights));
+        java.math.BigDecimal depositAmount = totalAmount.multiply(java.math.BigDecimal.valueOf(0.40));
+        java.math.BigDecimal remainingAmount = totalAmount.subtract(depositAmount);
+
+        Booking booking = new Booking();
+        booking.setCustomer(currentUser);
+        booking.setRoom(room);
+        booking.setCheckInDate(request.getCheckInDate());
+        booking.setCheckOutDate(request.getCheckOutDate());
+        booking.setGuestCount(request.getGuestCount());
+        booking.setSpecialRequests(request.getSpecialRequests());
+        booking.setTotalAmount(totalAmount);
+        booking.setDepositAmount(depositAmount);
+        booking.setRemainingAmount(remainingAmount);
+        booking.setStatus(Booking.Status.PENDING_DEPOSIT);
+
+        booking = bookingRepository.save(booking);
+
+        return BookingDetailResponse.fromEntity(booking);
     }
 }

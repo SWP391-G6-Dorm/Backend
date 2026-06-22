@@ -9,9 +9,6 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import com.homestay.exception.AccountNotVerifiedException;
-import com.homestay.exception.OtpExpiredException;
-
 import java.util.HashMap;
 import java.util.Map;
 

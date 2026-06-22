@@ -8,8 +8,6 @@ import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
-
 /**
  * Chuyển cột VARCHAR → NVARCHAR trước khi Hibernate đọc dữ liệu Unicode.
  * Thay thế việc phải chạy fix-unicode.sql thủ công trong SSMS.

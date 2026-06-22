@@ -25,19 +25,23 @@ public class ContractService {
     private final com.homestay.repository.BookingRepository bookingRepository;
     private final PdfService pdfService;
     private final EmailService emailService;
+    private final NotificationService notificationService;
 
-    public ContractService(ContractRepository contractRepository, com.homestay.repository.BookingRepository bookingRepository, PdfService pdfService, EmailService emailService) {
+    public ContractService(ContractRepository contractRepository,
+                           com.homestay.repository.BookingRepository bookingRepository,
+                           PdfService pdfService, EmailService emailService,
+                           NotificationService notificationService) {
         this.contractRepository = contractRepository;
         this.bookingRepository = bookingRepository;
         this.pdfService = pdfService;
         this.emailService = emailService;
+        this.notificationService = notificationService;
     }
 
     @Transactional(readOnly = true)
     public PageResponse<ContractSummaryResponse> getAllContracts(int page, int size, String status, String search, String sort) {
         Pageable pageable = buildPageable(page, size, sort);
-        Contract.Status contractStatus = (status != null && !status.isBlank() && !status.equalsIgnoreCase("ALL"))
-                ? Contract.Status.valueOf(status.trim().toUpperCase()) : null;
+        Contract.Status contractStatus = parseStatus(status);
 
         Page<Contract> result = contractRepository.findAllWithFilters(contractStatus, search, pageable);
 
@@ -49,6 +53,24 @@ public class ContractService {
                 result.getTotalPages()
         );
     }
+
+    @Transactional(readOnly = true)
+    public PageResponse<ContractSummaryResponse> getMyContracts(User currentUser, int page, int size, String status, String search, String sort) {
+        Pageable pageable = buildPageable(page, size, sort);
+        Contract.Status contractStatus = parseStatus(status);
+        String searchParam = (search != null && !search.isBlank()) ? search.trim() : null;
+
+        Page<Contract> result = contractRepository.findByCustomerWithFilters(currentUser.getId(), contractStatus, searchParam, pageable);
+
+        return new PageResponse<>(
+                result.getContent().stream().map(ContractSummaryResponse::fromEntity).toList(),
+                result.getNumber(),
+                result.getSize(),
+                result.getTotalElements(),
+                result.getTotalPages()
+        );
+    }
+
 
     @Transactional(readOnly = true)
     public ContractDetailResponse getContractDetail(UUID id, User currentUser) {
@@ -89,7 +111,18 @@ public class ContractService {
                     newContract.setCheckOutDate(booking.getCheckOutDate());
                     newContract.setStatus(Contract.Status.ACTIVE);
                     newContract.setGeneratedAt(LocalDateTime.now());
-                    return contractRepository.save(newContract);
+                    Contract saved = contractRepository.save(newContract);
+
+                    // Gửi thông báo cho Customer khi tạo hợp đồng
+                    notificationService.sendNotification(
+                            booking.getCustomer().getId(),
+                            com.homestay.entity.Notification.Type.CONTRACT_GENERATED,
+                            "Contract Generated",
+                            "Your accommodation contract for booking has been generated and sent to your email.",
+                            saved.getId(), "Contract"
+                    );
+
+                    return saved;
                 });
 
         return ContractDetailResponse.fromEntity(contract);
@@ -140,4 +173,27 @@ public class ContractService {
 
         return PageRequest.of(page, size, Sort.by(direction, field));
     }
+
+    private Contract.Status parseStatus(String status) {
+        if (status == null || status.isBlank() || status.equalsIgnoreCase("ALL")) return null;
+        try {
+            return Contract.Status.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    @Transactional
+    public void autoGenerateAndSendContract(UUID bookingId, User currentUser) {
+        ContractDetailResponse contractResp = getOrCreateContractByBookingId(bookingId, currentUser);
+        // Chạy việc gửi mail trên một luồng riêng để không block API (tránh Axios timeout)
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                resendContractEmail(contractResp.getId(), null);
+            } catch (Exception e) {
+                System.err.println("Lỗi khi gửi email hợp đồng (chưa cấu hình SMTP): " + e.getMessage());
+            }
+        });
+    }
 }
+
