@@ -1,6 +1,7 @@
 package com.homestay.exception;
 
 import com.homestay.dto.response.ApiResponse;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -57,6 +58,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleOtpExpired(OtpExpiredException ex) {
         return ResponseEntity.status(HttpStatus.GONE)
                 .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    // Lỗi vi phạm unique constraint DB (vd: Room Number trùng trong cùng property)
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrity(DataIntegrityViolationException ex) {
+        String message = "Dữ liệu bị trùng lặp";
+        String causeMsg = ex.getMostSpecificCause().getMessage();
+        if (causeMsg != null && causeMsg.contains("uq_room_number_property")) {
+            message = "Số phòng đã tồn tại trong property này. Vui lòng chọn số phòng khác.";
+        }
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error(message));
     }
 
     // Lỗi logic nghiệp vụ (đặt phòng trùng, cọc đã thanh toán, ...)

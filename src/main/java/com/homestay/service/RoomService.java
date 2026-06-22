@@ -4,6 +4,7 @@ import com.homestay.dto.request.CreateRoomRequest;
 import com.homestay.dto.request.UpdateRoomRequest;
 import com.homestay.dto.request.UpdateRoomStatusRequest;
 import com.homestay.dto.response.AvailabilityResponse;
+import com.homestay.dto.response.BookingSummaryResponse;
 import com.homestay.dto.response.PageResponse;
 import com.homestay.dto.response.RoomDetailResponse;
 import com.homestay.dto.response.RoomSummaryResponse;
@@ -13,6 +14,7 @@ import com.homestay.entity.Room;
 import com.homestay.entity.RoomImage;
 import com.homestay.exception.BusinessException;
 import com.homestay.exception.ResourceNotFoundException;
+import com.homestay.repository.BookingRepository;
 import com.homestay.repository.FloorRepository;
 import com.homestay.repository.PropertyRepository;
 import com.homestay.repository.RoomImageRepository;
@@ -30,6 +32,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDate;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -44,15 +47,18 @@ public class RoomService {
     private final PropertyRepository propertyRepository;
     private final FloorRepository floorRepository;
     private final RoomImageRepository roomImageRepository;
+    private final BookingRepository bookingRepository;
 
     public RoomService(RoomRepository roomRepository,
                        PropertyRepository propertyRepository,
                        FloorRepository floorRepository,
-                       RoomImageRepository roomImageRepository) {
+                       RoomImageRepository roomImageRepository,
+                       BookingRepository bookingRepository) {
         this.roomRepository = roomRepository;
         this.propertyRepository = propertyRepository;
         this.floorRepository = floorRepository;
         this.roomImageRepository = roomImageRepository;
+        this.bookingRepository = bookingRepository;
     }
 
     // ── Public API ─────────────────────────────────────────────────────────────
@@ -106,6 +112,19 @@ public class RoomService {
     }
 
     // ── Manager API ────────────────────────────────────────────────
+
+    // SCR-40: Lịch sử booking của một phòng cụ thể (Manager)
+    public PageResponse<BookingSummaryResponse> getRoomBookings(UUID roomId, Pageable pageable) {
+        findById(roomId); // validates room exists
+        var page = bookingRepository.findByRoomIdOrderByCheckInDateDesc(roomId, pageable);
+        return new PageResponse<>(
+                page.getContent().stream()
+                        .map(BookingSummaryResponse::fromEntity)
+                        .collect(Collectors.toList()),
+                page.getNumber(), page.getSize(),
+                page.getTotalElements(), page.getTotalPages()
+        );
+    }
 
     // SCR-39: Manager room list với combined filter
     public PageResponse<RoomSummaryResponse> getAllForManager(
@@ -211,9 +230,9 @@ public class RoomService {
         return RoomDetailResponse.fromEntity(room);
     }
 
-    // Upload ảnh cho phòng
+    // Upload ảnh cho phòng — trả về list ảnh mới (SCR-43)
     @Transactional
-    public void uploadImages(UUID roomId, List<MultipartFile> files, boolean setPrimary) {
+    public List<RoomDetailResponse.RoomImageInfo> uploadImages(UUID roomId, List<MultipartFile> files, boolean setPrimary) {
         Room room = findById(roomId);
 
         // Tạo thư mục nếu chưa có
@@ -228,12 +247,14 @@ public class RoomService {
         // Lấy sortOrder lớn nhất hiện tại
         List<RoomImage> existingImages = roomImageRepository.findByRoomIdOrderBySortOrderAsc(roomId);
         int nextSort = existingImages.isEmpty() ? 0 : existingImages.get(existingImages.size() - 1).getSortOrder() + 1;
+        boolean isFirstEver = existingImages.isEmpty(); // ảnh đầu tiên của phòng → tự set primary
 
-        // Nếu setPrimary và đây là ảnh đầu tiên -> bỏ primary cũ
-        if (setPrimary) {
+        // Nếu setPrimary → bỏ primary cũ trước
+        if (setPrimary || isFirstEver) {
             roomImageRepository.clearPrimaryByRoomId(roomId);
         }
 
+        List<RoomDetailResponse.RoomImageInfo> result = new ArrayList<>();
         for (int i = 0; i < files.size(); i++) {
             MultipartFile file = files.get(i);
             String fileName = UUID.randomUUID() + "_" + file.getOriginalFilename();
@@ -245,20 +266,47 @@ public class RoomService {
                 throw new BusinessException("Lưu file thất bại: " + file.getOriginalFilename());
             }
 
+            boolean makePrimary = (setPrimary || isFirstEver) && i == 0;
             RoomImage image = new RoomImage();
             image.setRoom(room);
             image.setImageUrl("/" + roomUploadDir + fileName);
-            image.setIsPrimary(setPrimary && i == 0); // chỉ ảnh đầu là primary
+            image.setIsPrimary(makePrimary);
             image.setSortOrder(nextSort + i);
-            roomImageRepository.save(image);
+            RoomImage saved = roomImageRepository.save(image);
+
+            // Build response DTO
+            RoomDetailResponse.RoomImageInfo info = new RoomDetailResponse.RoomImageInfo();
+            info.setId(saved.getId());
+            info.setImageUrl(saved.getImageUrl());
+            info.setIsPrimary(saved.getIsPrimary());
+            info.setSortOrder(saved.getSortOrder());
+            result.add(info);
         }
+        return result;
     }
 
-    // Xóa ảnh
+    // Set ảnh làm primary (SCR-43)
+    @Transactional
+    public void setPrimaryImage(UUID imageId) {
+        RoomImage image = roomImageRepository.findById(imageId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy ảnh"));
+        // Bỏ primary cũ của phòng này
+        roomImageRepository.clearPrimaryByRoomId(image.getRoom().getId());
+        // Set ảnh này là primary
+        image.setIsPrimary(true);
+        roomImageRepository.save(image);
+    }
+
+    // Xóa ảnh — xóa file vật lý + DB record (SCR-43)
     @Transactional
     public void deleteImage(UUID imageId) {
         RoomImage image = roomImageRepository.findById(imageId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy ảnh"));
+        // Xóa file vật lý nếu tồn tại
+        try {
+            Path filePath = Paths.get(image.getImageUrl().replaceFirst("^/", ""));
+            Files.deleteIfExists(filePath);
+        } catch (IOException ignored) {}
         roomImageRepository.delete(image);
     }
 
