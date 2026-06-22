@@ -4,6 +4,7 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -16,4 +17,17 @@ public class CustomerDetailResponse {
     private String status;
     private LocalDateTime createdAt;
     private long bookingCount;
+    private List<BookingSummary> recentBookings;
+
+    @Data
+    @Builder
+    public static class BookingSummary {
+        private UUID id;
+        private String roomNumber;
+        private String propertyName;
+        private String checkInDate;
+        private String checkOutDate;
+        private long totalAmount;
+        private String status;
+    }
 }
