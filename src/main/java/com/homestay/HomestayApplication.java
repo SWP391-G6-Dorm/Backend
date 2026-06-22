@@ -9,10 +9,10 @@ public class HomestayApplication {
 
     // Tất cả biến bắt buộc cần load từ .env vào System properties
     private static final String[] ENV_KEYS = {
-        "JWT_SECRET",
-        "MAIL_USERNAME",
-        "MAIL_PASSWORD",
-        "GOOGLE_CLIENT_ID",
+            "JWT_SECRET",
+            "MAIL_USERNAME",
+            "MAIL_PASSWORD",
+            "GOOGLE_CLIENT_ID",
     };
 
     public static void main(String[] args) {
@@ -30,9 +30,9 @@ public class HomestayApplication {
      */
     private static void loadDotenv() {
         String[] candidates = {
-            ".",         // chạy từ backend/ (IntelliJ default)
-            "../",       // chạy từ SWP391_G6/ root
-            "./backend", // dự phòng
+                ".", // chạy từ backend/ (IntelliJ default)
+                "../", // chạy từ SWP391_G6/ root
+                "./backend", // dự phòng
         };
 
         for (String dir : candidates) {

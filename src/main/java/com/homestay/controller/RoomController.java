@@ -5,6 +5,7 @@ import com.homestay.dto.request.UpdateRoomRequest;
 import com.homestay.dto.request.UpdateRoomStatusRequest;
 import com.homestay.dto.response.ApiResponse;
 import com.homestay.dto.response.AvailabilityResponse;
+import com.homestay.dto.response.BookingSummaryResponse;
 import com.homestay.dto.response.PageResponse;
 import com.homestay.dto.response.RoomDetailResponse;
 import com.homestay.dto.response.RoomSummaryResponse;
@@ -58,6 +59,23 @@ public class RoomController {
         return ResponseEntity.ok(ApiResponse.ok(roomService.getById(id)));
     }
 
+    // SCR-40: Lịch sử booking của phòng — Manager view (paginated)
+    @GetMapping("/{id}/bookings")
+    @PreAuthorize("hasRole('MANAGER')")
+    public ResponseEntity<ApiResponse<PageResponse<BookingSummaryResponse>>> getRoomBookings(
+            @PathVariable UUID id,
+            @RequestParam(defaultValue = "0")  int page,
+            @RequestParam(defaultValue = "5")  int size,
+            @RequestParam(defaultValue = "checkInDate,desc") String sort) {
+
+        String[] sortParts = sort.split(",");
+        Sort.Direction dir = sortParts.length > 1 && sortParts[1].equalsIgnoreCase("asc")
+                ? Sort.Direction.ASC : Sort.Direction.DESC;
+        PageRequest pageable = PageRequest.of(page, size, Sort.by(dir, sortParts[0]));
+
+        return ResponseEntity.ok(ApiResponse.ok(roomService.getRoomBookings(id, pageable)));
+    }
+
     // Kiểm tra availability - public (SCR-10)
     @GetMapping("/{id}/availability")
     public ResponseEntity<ApiResponse<AvailabilityResponse>> checkAvailability(
@@ -83,7 +101,7 @@ public class RoomController {
     @PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<ApiResponse<RoomDetailResponse>> update(
             @PathVariable UUID id,
-            @RequestBody UpdateRoomRequest request) {
+            @Valid @RequestBody UpdateRoomRequest request) {
 
         return ResponseEntity.ok(ApiResponse.ok("Cập nhật phòng thành công", roomService.update(id, request)));
     }
@@ -129,22 +147,16 @@ public class RoomController {
     }
 
     // Upload ảnh phòng - chỉ Manager (SCR-43)
+    // DELETE và SET-PRIMARY được xử lý bởi RoomImageController (/api/room-images)
     @PostMapping("/{id}/images")
     @PreAuthorize("hasRole('MANAGER')")
-    public ResponseEntity<ApiResponse<Void>> uploadImages(
+    public ResponseEntity<ApiResponse<List<RoomDetailResponse.RoomImageInfo>>> uploadImages(
             @PathVariable UUID id,
             @RequestParam("files") List<MultipartFile> files,
             @RequestParam(defaultValue = "false") boolean setPrimary) {
 
-        roomService.uploadImages(id, files, setPrimary);
-        return ResponseEntity.ok(ApiResponse.ok("Upload ảnh thành công"));
-    }
-
-    // Xóa ảnh phòng - chỉ Manager
-    @DeleteMapping("/images/{imageId}")
-    @PreAuthorize("hasRole('MANAGER')")
-    public ResponseEntity<ApiResponse<Void>> deleteImage(@PathVariable UUID imageId) {
-        roomService.deleteImage(imageId);
-        return ResponseEntity.ok(ApiResponse.ok("Xóa ảnh thành công"));
+        List<RoomDetailResponse.RoomImageInfo> result = roomService.uploadImages(id, files, setPrimary);
+        return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
+                .body(ApiResponse.ok("Upload ảnh thành công", result));
     }
 }
