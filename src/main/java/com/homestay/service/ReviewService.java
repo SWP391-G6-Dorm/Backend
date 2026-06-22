@@ -33,18 +33,18 @@ public class ReviewService {
     @Transactional
     public MyReviewResponse submitReview(CreateReviewRequest request, User currentUser) {
         Booking booking = bookingRepository.findById(request.getBookingId())
-                .orElseThrow(() -> new ResourceNotFoundException("Đơn đặt phòng không tồn tại"));
+                .orElseThrow(() -> new ResourceNotFoundException("Booking does not exist"));
 
         if (!booking.getCustomer().getId().equals(currentUser.getId())) {
-            throw new ForbiddenException("Bạn không thể đánh giá đơn đặt phòng của người khác");
+            throw new ForbiddenException("You cannot review someone else's booking");
         }
 
         if (booking.getStatus() != Booking.Status.CHECKED_OUT) {
-            throw new BusinessException("Chỉ có thể đánh giá sau khi đã checked-out");
+            throw new BusinessException("Reviews are only allowed after check-out");
         }
 
         if (reviewRepository.existsByBooking_Id(request.getBookingId())) {
-            throw new BusinessException("Đơn đặt phòng này đã được đánh giá trước đó.");
+            throw new BusinessException("This booking has already been reviewed.");
         }
 
         Review review = new Review();
@@ -74,10 +74,10 @@ public class ReviewService {
     @Transactional
     public MyReviewResponse updateReview(UUID id, UpdateReviewRequest request, User currentUser) {
         Review review = reviewRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Đánh giá không tồn tại"));
+                .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
 
         if (!review.getCustomer().getId().equals(currentUser.getId())) {
-            throw new ForbiddenException("Bạn không có quyền sửa đánh giá này");
+            throw new ForbiddenException("You do not have permission to edit this review");
         }
 
         review.setRating(request.getRating());
@@ -90,10 +90,10 @@ public class ReviewService {
     @Transactional
     public void deleteReview(UUID id, User currentUser) {
         Review review = reviewRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Đánh giá không tồn tại"));
+                .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
 
         if (!review.getCustomer().getId().equals(currentUser.getId())) {
-            throw new ForbiddenException("Bạn không có quyền xóa đánh giá này");
+            throw new ForbiddenException("You do not have permission to delete this review");
         }
 
         reviewRepository.delete(review);
