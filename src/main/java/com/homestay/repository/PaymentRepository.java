@@ -23,4 +23,8 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
 
     @Query("SELECT p FROM Payment p WHERE p.booking.id = :bookingId ORDER BY p.createdAt DESC")
     java.util.List<Payment> findByBookingIdOrderByCreatedAtDesc(@Param("bookingId") UUID bookingId);
+
+    long countByCustomerIdAndStatus(UUID customerId, Payment.Status status);
+
+    Page<Payment> findByCustomerIdOrderByCreatedAtDesc(UUID customerId, Pageable pageable);
 }

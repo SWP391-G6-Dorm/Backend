@@ -4,6 +4,7 @@ import com.homestay.entity.Room;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -13,7 +14,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Repository
-public interface RoomRepository extends JpaRepository<Room, UUID> {
+public interface RoomRepository extends JpaRepository<Room, UUID>, JpaSpecificationExecutor<Room> {
 
     // Tìm phòng theo property
     Page<Room> findByPropertyId(UUID propertyId, Pageable pageable);
@@ -46,15 +47,50 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
                                  @Param("checkIn") LocalDate checkIn,
                                  @Param("checkOut") LocalDate checkOut);
 
-    // Lấy các ngày đã bị đặt của phòng (dùng cho calendar)
+    // Lấy các khoảng ngày đã đặt kèm trạng thái booking (dùng cho SCR-10 calendar)
     @Query("""
-        SELECT b.checkInDate, b.checkOutDate FROM Booking b
+        SELECT b.checkInDate, b.checkOutDate, b.status FROM Booking b
         WHERE b.room.id = :roomId
-        AND b.status NOT IN ('CANCELLED')
+        AND b.status NOT IN ('CANCELLED', 'CHECKED_OUT')
         AND b.checkOutDate >= CURRENT_DATE
         ORDER BY b.checkInDate
     """)
     List<Object[]> findBookedDateRanges(@Param("roomId") UUID roomId);
+
+    // Public listing filter — SCR-07/SCR-09 (keyword: tên/địa chỉ homestay, số phòng, loại phòng)
+    @Query("""
+        SELECT r FROM Room r
+        WHERE (:keyword IS NULL OR
+               LOWER(r.roomNumber) LIKE LOWER(CONCAT('%', :keyword, '%')) OR
+               LOWER(r.roomType)   LIKE LOWER(CONCAT('%', :keyword, '%')) OR
+               LOWER(r.property.name) LIKE LOWER(CONCAT('%', :keyword, '%')) OR
+               LOWER(r.property.address) LIKE LOWER(CONCAT('%', :keyword, '%')))
+        AND (:status    IS NULL OR r.status        = :status)
+        AND (:propertyId IS NULL OR r.property.id = :propertyId)
+        AND (:roomTypes IS NULL OR CONCAT(',', :roomTypes, ',') LIKE CONCAT('%,', r.roomType, ',%'))
+        AND (:minPrice IS NULL OR r.pricePerNight >= :minPrice)
+        AND (:maxPrice IS NULL OR r.pricePerNight <= :maxPrice)
+        AND (:capacity IS NULL OR r.capacity >= :capacity)
+        AND (:checkIn IS NULL OR :checkOut IS NULL OR NOT EXISTS (
+            SELECT b FROM Booking b
+            WHERE b.room = r
+            AND b.status NOT IN ('CANCELLED', 'CHECKED_OUT')
+            AND b.checkInDate < :checkOut
+            AND b.checkOutDate > :checkIn
+        ))
+    """)
+    Page<Room> findPublicWithFilters(
+            @Param("keyword")    String keyword,
+            @Param("status")     Room.Status status,
+            @Param("propertyId") UUID propertyId,
+            @Param("roomTypes")  String roomTypes,
+            @Param("minPrice")   java.math.BigDecimal minPrice,
+            @Param("maxPrice")   java.math.BigDecimal maxPrice,
+            @Param("capacity")   Integer capacity,
+            @Param("checkIn")    LocalDate checkIn,
+            @Param("checkOut")   LocalDate checkOut,
+            Pageable pageable
+    );
 
     // SCR-39: Combined filter dành cho Manager — hỗ trợ search + status + propertyId + floorId + roomType
     @Query("""
@@ -75,6 +111,13 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
             @Param("roomType")   String roomType,
             Pageable pageable
     );
+
+    // Lấy khoảng giá thực tế từ DB — dùng cho slider bộ lọc
+    @Query("SELECT MIN(r.pricePerNight) FROM Room r WHERE r.status = :status")
+    java.math.BigDecimal findMinPrice(@Param("status") Room.Status status);
+
+    @Query("SELECT MAX(r.pricePerNight) FROM Room r WHERE r.status = :status")
+    java.math.BigDecimal findMaxPrice(@Param("status") Room.Status status);
 
     // SCR-39: Kiểm tra phòng có booking active không (trước khi xóa)
     @Query("""

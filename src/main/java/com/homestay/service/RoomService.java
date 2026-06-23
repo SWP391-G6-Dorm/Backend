@@ -6,6 +6,7 @@ import com.homestay.dto.request.UpdateRoomStatusRequest;
 import com.homestay.dto.response.AvailabilityResponse;
 import com.homestay.dto.response.BookingSummaryResponse;
 import com.homestay.dto.response.PageResponse;
+import com.homestay.dto.response.RoomCalendarResponse;
 import com.homestay.dto.response.RoomDetailResponse;
 import com.homestay.dto.response.RoomSummaryResponse;
 import com.homestay.entity.Floor;
@@ -19,6 +20,7 @@ import com.homestay.repository.FloorRepository;
 import com.homestay.repository.PropertyRepository;
 import com.homestay.repository.RoomImageRepository;
 import com.homestay.repository.RoomRepository;
+import com.homestay.repository.spec.RoomPublicSpecifications;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -27,11 +29,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDate;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -63,20 +65,43 @@ public class RoomService {
 
     // ── Public API ─────────────────────────────────────────────────────────────
 
-    // Lấy danh sách phòng (public listing - SCR-07)
-    public PageResponse<RoomSummaryResponse> getAll(String search, String status, Pageable pageable) {
-        Page<Room> page;
+    // Lấy danh sách phòng (public listing - SCR-07/SCR-09) với full filter
+    public PageResponse<RoomSummaryResponse> getAll(
+            String search, String location, String status, String propertyIdStr,
+            String roomType, BigDecimal minPrice, BigDecimal maxPrice,
+            Integer capacity, LocalDate checkIn, LocalDate checkOut,
+            Pageable pageable) {
 
-        if (search != null && !search.isBlank()) {
-            page = roomRepository.findByRoomNumberContainingIgnoreCaseOrRoomTypeContainingIgnoreCase(
-                    search, search, pageable);
-        } else if (status != null && !status.isBlank()) {
-            page = roomRepository.findByStatus(Room.Status.valueOf(status.toUpperCase()), pageable);
-        } else {
-            page = roomRepository.findAll(pageable);
+        Room.Status statusEnum = null;
+        if (status != null && !status.isBlank()) {
+            try { statusEnum = Room.Status.valueOf(status.toUpperCase()); }
+            catch (IllegalArgumentException ignored) {}
         }
 
+        UUID propertyId = (propertyIdStr != null && !propertyIdStr.isBlank())
+                ? UUID.fromString(propertyIdStr) : null;
+
+        String cleanSearch   = (search   != null && !search.isBlank())   ? search.trim()   : null;
+        String cleanLocation = (location != null && !location.isBlank()) ? location.trim() : null;
+        String keyword = cleanSearch != null ? cleanSearch : cleanLocation;
+        String cleanRoomType = (roomType != null && !roomType.isBlank()) ? roomType.trim() : null;
+
+        Page<Room> page = roomRepository.findAll(
+                RoomPublicSpecifications.withFilters(
+                        keyword, statusEnum, propertyId, cleanRoomType,
+                        minPrice, maxPrice, capacity, checkIn, checkOut),
+                pageable);
+
         return toPageResponse(page);
+    }
+
+    // Khoảng giá thực tế cho slider bộ lọc
+    public java.util.Map<String, java.math.BigDecimal> getPriceStats() {
+        java.math.BigDecimal min = roomRepository.findMinPrice(Room.Status.AVAILABLE);
+        java.math.BigDecimal max = roomRepository.findMaxPrice(Room.Status.AVAILABLE);
+        return java.util.Map.of(
+                "minPrice", min != null ? min : java.math.BigDecimal.ZERO,
+                "maxPrice", max != null ? max : new java.math.BigDecimal("5000000"));
     }
 
     // Lấy danh sách phòng nổi bật cho trang chủ (public - SCR-01)
@@ -94,6 +119,19 @@ public class RoomService {
         return RoomDetailResponse.fromEntity(room);
     }
 
+    // Lấy lịch trống phòng cho SCR-10 calendar
+    public RoomCalendarResponse getCalendar(UUID roomId) {
+        Room room = findById(roomId);
+        List<Object[]> ranges = roomRepository.findBookedDateRanges(roomId);
+        List<RoomCalendarResponse.BookedRange> bookedRanges = ranges.stream()
+                .map(r -> new RoomCalendarResponse.BookedRange(
+                        (LocalDate) r[0],
+                        (LocalDate) r[1],
+                        r[2].toString()))
+                .collect(Collectors.toList());
+        return new RoomCalendarResponse(room.getStatus().name(), bookedRanges);
+    }
+
     // Kiểm tra phòng còn trống không (public - SCR-10)
     public AvailabilityResponse checkAvailability(UUID roomId, LocalDate checkIn, LocalDate checkOut) {
         if (checkIn == null || checkOut == null || !checkOut.isAfter(checkIn)) {
@@ -102,7 +140,6 @@ public class RoomService {
 
         boolean hasOverlap = roomRepository.existsOverlapBooking(roomId, checkIn, checkOut);
 
-        // Lấy các khoảng ngày đã đặt
         List<Object[]> ranges = roomRepository.findBookedDateRanges(roomId);
         List<AvailabilityResponse.DateRange> bookedRanges = ranges.stream()
                 .map(r -> new AvailabilityResponse.DateRange((LocalDate) r[0], (LocalDate) r[1]))

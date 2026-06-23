@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -37,6 +38,31 @@ public class BookingDetailResponse {
     private LocalDateTime createdAt;
     private boolean isReviewed;
 
+    private List<PaymentInfo> payments;
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class PaymentInfo {
+        private UUID id;
+        private String type;
+        private BigDecimal amount;
+        private String method;
+        private String status;
+        private LocalDateTime paidAt;
+
+        public static PaymentInfo fromEntity(com.homestay.entity.Payment payment) {
+            return new PaymentInfo(
+                    payment.getId(),
+                    payment.getType().name(),
+                    payment.getAmount(),
+                    payment.getMethod().name(),
+                    payment.getStatus().name(),
+                    payment.getPaidAt()
+            );
+        }
+    }
+
     public static BookingDetailResponse fromEntity(Booking booking) {
         return fromEntity(booking, false);
     }
@@ -60,7 +86,8 @@ public class BookingDetailResponse {
                 booking.getStatus().name(),
                 booking.getSpecialRequests(),
                 booking.getCreatedAt(),
-                isReviewed
+                isReviewed,
+                null
         );
     }
 }

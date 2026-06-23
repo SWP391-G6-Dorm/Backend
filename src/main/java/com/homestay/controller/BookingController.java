@@ -4,6 +4,7 @@ import com.homestay.dto.response.ApiResponse;
 import com.homestay.dto.response.BookingSummaryResponse;
 import com.homestay.dto.response.PageResponse;
 import com.homestay.entity.User;
+import com.homestay.exception.ForbiddenException;
 import com.homestay.service.BookingService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -68,11 +69,22 @@ public class BookingController {
         return ResponseEntity.ok(ApiResponse.ok(null));
     }
 
+    @org.springframework.web.bind.annotation.PatchMapping("/{id}/cancel")
+    public ResponseEntity<ApiResponse<Void>> cancelBooking(
+            @org.springframework.web.bind.annotation.PathVariable java.util.UUID id,
+            @AuthenticationPrincipal User currentUser) {
+        bookingService.cancelBooking(id, currentUser);
+        return ResponseEntity.ok(ApiResponse.ok("Hủy booking thành công"));
+    }
+
     @org.springframework.web.bind.annotation.PostMapping
     public ResponseEntity<ApiResponse<com.homestay.dto.response.BookingDetailResponse>> createBooking(
             @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody com.homestay.dto.request.CreateBookingRequest request,
             @AuthenticationPrincipal User currentUser
     ) {
+        if (currentUser == null) {
+            throw new ForbiddenException("Vui lòng đăng nhập để đặt phòng");
+        }
         com.homestay.dto.response.BookingDetailResponse data = bookingService.createBooking(request, currentUser);
         return ResponseEntity.ok(ApiResponse.ok("Đặt phòng thành công, vui lòng thanh toán cọc", data));
     }

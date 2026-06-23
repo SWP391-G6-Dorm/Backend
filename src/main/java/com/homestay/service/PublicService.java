@@ -51,7 +51,8 @@ public class PublicService {
         );
     }
 
-    private static final List<String> POPULAR_LOCATIONS = List.of(
+    // Danh sách fallback khi DB chưa có property nào
+    private static final List<String> FALLBACK_LOCATIONS = List.of(
             "Đà Lạt", "Hội An", "Đà Nẵng", "Phú Quốc", "Nha Trang", "Hà Nội", "Sapa", "Vũng Tàu"
     );
 
@@ -60,23 +61,34 @@ public class PublicService {
         String query = q == null ? "" : q.trim().toLowerCase();
         Set<SearchSuggestionResponse> results = new LinkedHashSet<>();
 
-        for (String loc : POPULAR_LOCATIONS) {
+        // Ưu tiên địa chỉ thực từ property trong DB
+        Page<Property> propertyPage = query.isBlank()
+                ? propertyRepository.findByStatus(Property.Status.ACTIVE, PageRequest.of(0, 20))
+                : propertyRepository.findByNameContainingIgnoreCaseAndStatus(
+                        q.trim(), Property.Status.ACTIVE, PageRequest.of(0, 10));
+
+        Set<String> dbCities = new LinkedHashSet<>();
+        for (Property property : propertyPage.getContent()) {
+            if (query.isBlank() || property.getAddress().toLowerCase().contains(query)) {
+                extractLocationFromAddress(property.getAddress()).ifPresent(dbCities::add);
+            }
+        }
+
+        // Thêm city từ DB trước (dynamic)
+        for (String city : dbCities) {
+            results.add(new SearchSuggestionResponse("location", city));
+        }
+
+        // Fallback: thêm từ danh sách mặc định nếu còn chỗ
+        for (String loc : FALLBACK_LOCATIONS) {
             if (query.isEmpty() || loc.toLowerCase().contains(query)) {
                 results.add(new SearchSuggestionResponse("location", loc));
             }
         }
 
-        Page<Property> propertyPage = query.isBlank()
-                ? propertyRepository.findByStatus(Property.Status.ACTIVE, PageRequest.of(0, 10))
-                : propertyRepository.findByNameContainingIgnoreCaseAndStatus(
-                        q.trim(), Property.Status.ACTIVE, PageRequest.of(0, 10));
-
+        // Thêm property names
         for (Property property : propertyPage.getContent()) {
             results.add(new SearchSuggestionResponse("property", property.getName()));
-            if (query.isBlank() || property.getAddress().toLowerCase().contains(query)) {
-                extractLocationFromAddress(property.getAddress()).ifPresent(city ->
-                        results.add(new SearchSuggestionResponse("location", city)));
-            }
         }
 
         return new ArrayList<>(results).stream().limit(15).toList();

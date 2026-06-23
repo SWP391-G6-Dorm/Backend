@@ -3,6 +3,7 @@ package com.homestay.controller;
 import com.homestay.dto.request.CreatePropertyRequest;
 import com.homestay.dto.request.UpdatePropertyRequest;
 import com.homestay.dto.response.ApiResponse;
+import com.homestay.dto.response.FeaturedPropertyResponse;
 import com.homestay.dto.response.PageResponse;
 import com.homestay.dto.response.PropertyDetailResponse;
 import com.homestay.dto.response.PropertyResponse;
@@ -17,6 +18,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -29,6 +31,13 @@ public class PropertyController {
     public PropertyController(PropertyService propertyService, FloorService floorService) {
         this.propertyService = propertyService;
         this.floorService = floorService;
+    }
+
+    // Lấy danh sách property nổi bật cho Landing Page — SCR-01
+    @GetMapping("/featured")
+    public ResponseEntity<ApiResponse<List<FeaturedPropertyResponse>>> getFeatured(
+            @RequestParam(defaultValue = "6") int limit) {
+        return ResponseEntity.ok(ApiResponse.ok(propertyService.getFeatured(limit)));
     }
 
     // Lấy danh sách property - public (SCR-01, SCR-07)
