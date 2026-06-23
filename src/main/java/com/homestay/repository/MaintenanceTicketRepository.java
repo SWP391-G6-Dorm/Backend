@@ -12,4 +12,6 @@ import java.util.UUID;
 public interface MaintenanceTicketRepository extends JpaRepository<MaintenanceTicket, UUID> {
     List<MaintenanceTicket> findByCustomerOrderByCreatedAtDesc(User customer);
     List<MaintenanceTicket> findAllByOrderByCreatedAtDesc();
+
+    long countByCustomerIdAndStatusIn(UUID customerId, java.util.Collection<MaintenanceTicket.Status> statuses);
 }

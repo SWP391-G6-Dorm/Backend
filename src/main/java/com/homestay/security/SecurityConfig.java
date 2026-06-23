@@ -24,9 +24,12 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final JwtAuthenticationEntryPoint authenticationEntryPoint;
 
-    public SecurityConfig(JwtAuthFilter jwtAuthFilter) {
+    public SecurityConfig(JwtAuthFilter jwtAuthFilter,
+                          JwtAuthenticationEntryPoint authenticationEntryPoint) {
         this.jwtAuthFilter = jwtAuthFilter;
+        this.authenticationEntryPoint = authenticationEntryPoint;
     }
 
     @Bean
@@ -60,7 +63,8 @@ public class SecurityConfig {
                     "/api/rooms",
                     "/api/rooms/**",
                     "/api/properties",
-                    "/api/properties/**"
+                    "/api/properties/**",
+                    "/api/public/**"
                 ).permitAll()
 
                 // Swagger docs (dev only)
@@ -77,6 +81,9 @@ public class SecurityConfig {
 
                 // Tất cả còn lại phải đăng nhập
                 .anyRequest().authenticated()
+            )
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint(authenticationEntryPoint)
             );
 
         // Thêm JWT filter trước filter mặc định của Spring
@@ -95,9 +102,10 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of(
-            "http://localhost:3000",  // React CRA
-            "http://localhost:5173"   // Vite
+        // Dùng pattern để chấp nhận mọi port localhost khi dev (3000, 3001, 5173, ...)
+        config.setAllowedOriginPatterns(List.of(
+            "http://localhost:*",
+            "http://127.0.0.1:*"
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));

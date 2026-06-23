@@ -6,6 +6,7 @@ import com.homestay.entity.Booking;
 import com.homestay.entity.User;
 import com.homestay.exception.ForbiddenException;
 import com.homestay.repository.BookingRepository;
+import com.homestay.repository.PaymentRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -24,13 +25,16 @@ public class BookingService {
     private final BookingRepository bookingRepository;
     private final NotificationService notificationService;
     private final com.homestay.repository.RoomRepository roomRepository;
+    private final PaymentRepository paymentRepository;
 
     public BookingService(BookingRepository bookingRepository,
                           NotificationService notificationService,
-                          com.homestay.repository.RoomRepository roomRepository) {
+                          com.homestay.repository.RoomRepository roomRepository,
+                          PaymentRepository paymentRepository) {
         this.bookingRepository = bookingRepository;
         this.notificationService = notificationService;
         this.roomRepository = roomRepository;
+        this.paymentRepository = paymentRepository;
     }
 
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
@@ -50,10 +54,10 @@ public class BookingService {
 
         if (status != null && !status.isBlank()) {
             Booking.Status bookingStatus = Booking.Status.valueOf(status.trim().toUpperCase());
-            result = bookingRepository.findByCustomerIdAndStatusOrderByCreatedAtDesc(
+            result = bookingRepository.findByCustomerIdAndStatus(
                     currentUser.getId(), bookingStatus, pageable);
         } else {
-            result = bookingRepository.findByCustomerIdOrderByCreatedAtDesc(currentUser.getId(), pageable);
+            result = bookingRepository.findByCustomerId(currentUser.getId(), pageable);
         }
 
         return new PageResponse<>(
@@ -115,7 +119,47 @@ public class BookingService {
             throw new ForbiddenException("Không có quyền xem chi tiết đặt phòng này");
         }
 
-        return BookingDetailResponse.fromEntity(booking);
+        BookingDetailResponse response = BookingDetailResponse.fromEntity(booking);
+        response.setPayments(
+                paymentRepository.findByBookingIdOrderByCreatedAtDesc(id).stream()
+                        .map(BookingDetailResponse.PaymentInfo::fromEntity)
+                        .toList()
+        );
+        return response;
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public void cancelBooking(UUID id, User currentUser) {
+        Booking booking = bookingRepository.findById(id)
+                .orElseThrow(() -> new com.homestay.exception.ResourceNotFoundException("Booking không tồn tại"));
+
+        boolean isManager = currentUser.getRole() == User.Role.MANAGER;
+        if (!isManager && !booking.getCustomer().getId().equals(currentUser.getId())) {
+            throw new ForbiddenException("Không có quyền hủy booking này");
+        }
+
+        if (booking.getStatus() == Booking.Status.CANCELLED) {
+            throw new IllegalArgumentException("Booking đã bị hủy trước đó");
+        }
+        if (booking.getStatus() == Booking.Status.CHECKED_IN || booking.getStatus() == Booking.Status.CHECKED_OUT) {
+            throw new IllegalArgumentException("Không thể hủy booking đang check-in hoặc đã check-out");
+        }
+
+        booking.setStatus(Booking.Status.CANCELLED);
+        // Giải phóng phòng về AVAILABLE nếu đang ở trạng thái bị giữ
+        Room room = booking.getRoom();
+        if (room.getStatus() != Room.Status.OCCUPIED && room.getStatus() != Room.Status.MAINTENANCE) {
+            room.setStatus(Room.Status.AVAILABLE);
+        }
+        bookingRepository.save(booking);
+
+        notificationService.sendNotification(
+                booking.getCustomer().getId(),
+                com.homestay.entity.Notification.Type.BOOKING_CANCELLED,
+                "Booking Cancelled",
+                "Your booking #" + booking.getId().toString().substring(0, 8).toUpperCase() + " has been cancelled.",
+                booking.getId(), "Booking"
+        );
     }
 
     @org.springframework.transaction.annotation.Transactional
@@ -216,6 +260,9 @@ public class BookingService {
         booking.setStatus(Booking.Status.PENDING_DEPOSIT);
 
         booking = bookingRepository.save(booking);
+
+        // Giữ phòng ở trạng thái chờ cọc để tránh double-booking
+        room.setStatus(Room.Status.PENDING_DEPOSIT);
 
         return BookingDetailResponse.fromEntity(booking);
     }

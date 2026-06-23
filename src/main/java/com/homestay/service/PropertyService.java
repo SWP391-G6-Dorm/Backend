@@ -2,6 +2,7 @@ package com.homestay.service;
 
 import com.homestay.dto.request.CreatePropertyRequest;
 import com.homestay.dto.request.UpdatePropertyRequest;
+import com.homestay.dto.response.FeaturedPropertyResponse;
 import com.homestay.dto.response.PageResponse;
 import com.homestay.dto.response.PropertyDetailResponse;
 import com.homestay.dto.response.PropertyResponse;
@@ -10,10 +11,13 @@ import com.homestay.exception.BusinessException;
 import com.homestay.exception.ResourceNotFoundException;
 import com.homestay.repository.PropertyRepository;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -24,6 +28,16 @@ public class PropertyService {
 
     public PropertyService(PropertyRepository propertyRepository) {
         this.propertyRepository = propertyRepository;
+    }
+
+    // Lấy danh sách property nổi bật cho Landing Page — SCR-01
+    @Transactional(readOnly = true)
+    public List<FeaturedPropertyResponse> getFeatured(int limit) {
+        PageRequest pageable = PageRequest.of(0, Math.min(limit, 20), Sort.by("createdAt").descending());
+        return propertyRepository.findByStatus(Property.Status.ACTIVE, pageable)
+                .getContent().stream()
+                .map(FeaturedPropertyResponse::fromEntity)
+                .collect(Collectors.toList());
     }
 
     // Lấy danh sách property (có thể lọc theo tên/địa chỉ và status) — SCR-33
