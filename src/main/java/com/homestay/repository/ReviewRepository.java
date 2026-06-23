@@ -28,4 +28,12 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
 
     @EntityGraph(attributePaths = {"customer"})
     Page<Review> findByRoom_IdAndStatusOrderByCreatedAtDesc(UUID roomId, Review.Status status, Pageable pageable);
+
+    boolean existsByBooking_Id(UUID bookingId);
+
+    @EntityGraph(attributePaths = {"booking", "room", "room.property", "room.roomImages"})
+    Page<Review> findByCustomer_IdOrderByCreatedAtDesc(UUID customerId, Pageable pageable);
+
+    java.util.Optional<Review> findByIdAndCustomer_Id(UUID id, UUID customerId);
 }
+

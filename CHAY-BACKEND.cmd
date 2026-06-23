@@ -18,6 +18,9 @@ if exist "C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot" (
 if exist "C:\Program Files\Java\jdk-17" (
   set "JAVA_HOME=C:\Program Files\Java\jdk-17"
 )
+if exist "C:\Program Files\Java\jdk-17.0.1" (
+  set "JAVA_HOME=C:\Program Files\Java\jdk-17.0.1"
+)
 
 if defined JAVA_HOME (
   echo JDK: !JAVA_HOME!

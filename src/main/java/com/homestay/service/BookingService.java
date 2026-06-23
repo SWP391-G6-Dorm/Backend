@@ -26,15 +26,18 @@ public class BookingService {
     private final NotificationService notificationService;
     private final com.homestay.repository.RoomRepository roomRepository;
     private final PaymentRepository paymentRepository;
+    private final com.homestay.repository.ReviewRepository reviewRepository;
 
     public BookingService(BookingRepository bookingRepository,
                           NotificationService notificationService,
                           com.homestay.repository.RoomRepository roomRepository,
-                          PaymentRepository paymentRepository) {
+                          PaymentRepository paymentRepository,
+                          com.homestay.repository.ReviewRepository reviewRepository) {
         this.bookingRepository = bookingRepository;
         this.notificationService = notificationService;
         this.roomRepository = roomRepository;
         this.paymentRepository = paymentRepository;
+        this.reviewRepository = reviewRepository;
     }
 
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
@@ -61,7 +64,10 @@ public class BookingService {
         }
 
         return new PageResponse<>(
-                result.getContent().stream().map(BookingSummaryResponse::fromEntity).toList(),
+                result.getContent().stream().map(booking -> {
+                    boolean isReviewed = reviewRepository.existsByBooking_Id(booking.getId());
+                    return BookingSummaryResponse.fromEntity(booking, isReviewed);
+                }).toList(),
                 result.getNumber(),
                 result.getSize(),
                 result.getTotalElements(),
@@ -100,7 +106,10 @@ public class BookingService {
         Page<Booking> result = bookingRepository.findAllWithFilters(bookingStatus, search, pageable);
 
         return new PageResponse<>(
-                result.getContent().stream().map(BookingSummaryResponse::fromEntity).toList(),
+                result.getContent().stream().map(booking -> {
+                    boolean isReviewed = reviewRepository.existsByBooking_Id(booking.getId());
+                    return BookingSummaryResponse.fromEntity(booking, isReviewed);
+                }).toList(),
                 result.getNumber(),
                 result.getSize(),
                 result.getTotalElements(),
@@ -119,7 +128,8 @@ public class BookingService {
             throw new ForbiddenException("Không có quyền xem chi tiết đặt phòng này");
         }
 
-        BookingDetailResponse response = BookingDetailResponse.fromEntity(booking);
+        boolean isReviewed = reviewRepository.existsByBooking_Id(booking.getId());
+        BookingDetailResponse response = BookingDetailResponse.fromEntity(booking, isReviewed);
         response.setPayments(
                 paymentRepository.findByBookingIdOrderByCreatedAtDesc(id).stream()
                         .map(BookingDetailResponse.PaymentInfo::fromEntity)
