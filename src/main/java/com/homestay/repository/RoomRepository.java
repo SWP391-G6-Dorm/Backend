@@ -61,9 +61,12 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
         SELECT r FROM Room r
         WHERE (:search IS NULL OR
                LOWER(r.roomNumber) LIKE LOWER(CONCAT('%', :search, '%')) OR
-               LOWER(r.roomType)   LIKE LOWER(CONCAT('%', :search, '%')))
+               LOWER(r.roomType)   LIKE LOWER(CONCAT('%', :search, '%')) OR
+               LOWER(r.property.name) LIKE LOWER(CONCAT('%', :search, '%')) OR
+               LOWER(r.property.address) LIKE LOWER(CONCAT('%', :search, '%')))
         AND (:location IS NULL OR LOWER(r.property.address) LIKE LOWER(CONCAT('%', :location, '%'))
-                                OR LOWER(r.property.name)   LIKE LOWER(CONCAT('%', :location, '%')))
+                                OR LOWER(r.property.name)   LIKE LOWER(CONCAT('%', :location, '%'))
+                                OR LOWER(r.roomNumber)      LIKE LOWER(CONCAT('%', :location, '%')))
         AND (:status    IS NULL OR r.status        = :status)
         AND (:propertyId IS NULL OR r.property.id = :propertyId)
         AND (:roomTypes IS NULL OR CONCAT(',', :roomTypes, ',') LIKE CONCAT('%,', r.roomType, ',%'))
