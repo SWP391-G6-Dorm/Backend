@@ -4,6 +4,7 @@ import com.homestay.entity.Room;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -13,7 +14,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Repository
-public interface RoomRepository extends JpaRepository<Room, UUID> {
+public interface RoomRepository extends JpaRepository<Room, UUID>, JpaSpecificationExecutor<Room> {
 
     // Tìm phòng theo property
     Page<Room> findByPropertyId(UUID propertyId, Pageable pageable);
@@ -56,17 +57,14 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
     """)
     List<Object[]> findBookedDateRanges(@Param("roomId") UUID roomId);
 
-    // Public listing filter — SCR-07/SCR-09 (location, price, capacity, availability, roomType multi-select)
+    // Public listing filter — SCR-07/SCR-09 (keyword: tên/địa chỉ homestay, số phòng, loại phòng)
     @Query("""
         SELECT r FROM Room r
-        WHERE (:search IS NULL OR
-               LOWER(r.roomNumber) LIKE LOWER(CONCAT('%', :search, '%')) OR
-               LOWER(r.roomType)   LIKE LOWER(CONCAT('%', :search, '%')) OR
-               LOWER(r.property.name) LIKE LOWER(CONCAT('%', :search, '%')) OR
-               LOWER(r.property.address) LIKE LOWER(CONCAT('%', :search, '%')))
-        AND (:location IS NULL OR LOWER(r.property.address) LIKE LOWER(CONCAT('%', :location, '%'))
-                                OR LOWER(r.property.name)   LIKE LOWER(CONCAT('%', :location, '%'))
-                                OR LOWER(r.roomNumber)      LIKE LOWER(CONCAT('%', :location, '%')))
+        WHERE (:keyword IS NULL OR
+               LOWER(r.roomNumber) LIKE LOWER(CONCAT('%', :keyword, '%')) OR
+               LOWER(r.roomType)   LIKE LOWER(CONCAT('%', :keyword, '%')) OR
+               LOWER(r.property.name) LIKE LOWER(CONCAT('%', :keyword, '%')) OR
+               LOWER(r.property.address) LIKE LOWER(CONCAT('%', :keyword, '%')))
         AND (:status    IS NULL OR r.status        = :status)
         AND (:propertyId IS NULL OR r.property.id = :propertyId)
         AND (:roomTypes IS NULL OR CONCAT(',', :roomTypes, ',') LIKE CONCAT('%,', r.roomType, ',%'))
@@ -82,8 +80,7 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
         ))
     """)
     Page<Room> findPublicWithFilters(
-            @Param("search")     String search,
-            @Param("location")   String location,
+            @Param("keyword")    String keyword,
             @Param("status")     Room.Status status,
             @Param("propertyId") UUID propertyId,
             @Param("roomTypes")  String roomTypes,

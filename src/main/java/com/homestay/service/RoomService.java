@@ -18,6 +18,7 @@ import com.homestay.repository.FloorRepository;
 import com.homestay.repository.PropertyRepository;
 import com.homestay.repository.RoomImageRepository;
 import com.homestay.repository.RoomRepository;
+import com.homestay.repository.spec.RoomPublicSpecifications;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -76,11 +77,14 @@ public class RoomService {
 
         String cleanSearch   = (search   != null && !search.isBlank())   ? search.trim()   : null;
         String cleanLocation = (location != null && !location.isBlank()) ? location.trim() : null;
+        String keyword = cleanSearch != null ? cleanSearch : cleanLocation;
         String cleanRoomType = (roomType != null && !roomType.isBlank()) ? roomType.trim() : null;
 
-        Page<Room> page = roomRepository.findPublicWithFilters(
-                cleanSearch, cleanLocation, statusEnum, propertyId, cleanRoomType,
-                minPrice, maxPrice, capacity, checkIn, checkOut, pageable);
+        Page<Room> page = roomRepository.findAll(
+                RoomPublicSpecifications.withFilters(
+                        keyword, statusEnum, propertyId, cleanRoomType,
+                        minPrice, maxPrice, capacity, checkIn, checkOut),
+                pageable);
 
         return toPageResponse(page);
     }
