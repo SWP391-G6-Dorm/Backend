@@ -121,6 +121,23 @@ public class UserService {
             throw new BusinessException("Người dùng không phải là Customer");
         }
 
+        org.springframework.data.domain.Page<com.homestay.entity.Booking> bookingsPage = 
+            bookingRepository.findByCustomerId(user.getId(), 
+                org.springframework.data.domain.PageRequest.of(0, 10, org.springframework.data.domain.Sort.by("createdAt").descending()));
+
+        java.util.List<com.homestay.dto.response.CustomerDetailResponse.BookingSummary> recentBookings = 
+            bookingsPage.getContent().stream().map(b -> 
+                com.homestay.dto.response.CustomerDetailResponse.BookingSummary.builder()
+                    .id(b.getId())
+                    .roomNumber(b.getRoom().getRoomNumber())
+                    .propertyName(b.getRoom().getProperty().getName())
+                    .checkInDate(b.getCheckInDate().toString())
+                    .checkOutDate(b.getCheckOutDate().toString())
+                    .totalAmount(b.getTotalAmount() != null ? b.getTotalAmount().longValue() : 0L)
+                    .status(b.getStatus().name())
+                    .build()
+            ).toList();
+
         return com.homestay.dto.response.CustomerDetailResponse.builder()
                 .id(user.getId())
                 .fullName(user.getFullName())
@@ -129,6 +146,7 @@ public class UserService {
                 .status(user.getStatus().name())
                 .createdAt(user.getCreatedAt())
                 .bookingCount(bookingRepository.countByCustomerId(user.getId()))
+                .recentBookings(recentBookings)
                 .build();
     }
 

@@ -35,8 +35,13 @@ public class BookingDetailResponse {
     private String status;
     private String specialRequests;
     private LocalDateTime createdAt;
+    private boolean isReviewed;
 
     public static BookingDetailResponse fromEntity(Booking booking) {
+        return fromEntity(booking, false);
+    }
+
+    public static BookingDetailResponse fromEntity(Booking booking, boolean isReviewed) {
         return new BookingDetailResponse(
                 booking.getId(),
                 booking.getCustomer().getId(),
@@ -54,7 +59,8 @@ public class BookingDetailResponse {
                 booking.getRemainingAmount(),
                 booking.getStatus().name(),
                 booking.getSpecialRequests(),
-                booking.getCreatedAt()
+                booking.getCreatedAt(),
+                isReviewed
         );
     }
 }

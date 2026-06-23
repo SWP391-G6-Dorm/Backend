@@ -15,9 +15,9 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     List<Booking> findByCustomerOrderByCreatedAtDesc(User customer);
 
-    Page<Booking> findByCustomerIdOrderByCreatedAtDesc(UUID customerId, Pageable pageable);
+    Page<Booking> findByCustomerId(UUID customerId, Pageable pageable);
 
-    Page<Booking> findByCustomerIdAndStatusOrderByCreatedAtDesc(UUID customerId, Booking.Status status, Pageable pageable);
+    Page<Booking> findByCustomerIdAndStatus(UUID customerId, Booking.Status status, Pageable pageable);
 
     // SCR-40: Booking history for a specific room (Manager view)
     Page<Booking> findByRoomIdOrderByCheckInDateDesc(UUID roomId, Pageable pageable);
