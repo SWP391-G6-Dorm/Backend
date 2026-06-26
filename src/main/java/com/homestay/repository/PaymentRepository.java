@@ -8,6 +8,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Repository
@@ -22,9 +25,75 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
                                      Pageable pageable);
 
     @Query("SELECT p FROM Payment p WHERE p.booking.id = :bookingId ORDER BY p.createdAt DESC")
-    java.util.List<Payment> findByBookingIdOrderByCreatedAtDesc(@Param("bookingId") UUID bookingId);
+    List<Payment> findByBookingIdOrderByCreatedAtDesc(@Param("bookingId") UUID bookingId);
 
     long countByCustomerIdAndStatus(UUID customerId, Payment.Status status);
 
     Page<Payment> findByCustomerIdOrderByCreatedAtDesc(UUID customerId, Pageable pageable);
+
+    // ── SCR-59: Revenue Report queries ─────────────────────────────────────────
+
+    /**
+     * Tổng doanh thu (PAID) theo loại trong khoảng thời gian, tuỳ chọn filter property.
+     * Trả về BigDecimal (có thể null nếu không có payment nào).
+     */
+    @Query("""
+        SELECT COALESCE(SUM(p.amount), 0)
+        FROM Payment p
+        JOIN p.booking b
+        JOIN b.room r
+        WHERE p.status = 'PAID'
+          AND (:from IS NULL OR p.paidAt >= :from)
+          AND (:to   IS NULL OR p.paidAt <= :to)
+          AND (:propertyId IS NULL OR r.property.id = :propertyId)
+          AND (:type IS NULL OR p.type = :type)
+        """)
+    BigDecimal sumRevenueByType(
+            @Param("from")       LocalDateTime from,
+            @Param("to")         LocalDateTime to,
+            @Param("propertyId") UUID propertyId,
+            @Param("type")       Payment.Type type
+    );
+
+    /**
+     * Đếm số booking phân biệt có ít nhất 1 payment PAID trong kỳ.
+     */
+    @Query("""
+        SELECT COUNT(DISTINCT p.booking.id)
+        FROM Payment p
+        JOIN p.booking b
+        JOIN b.room r
+        WHERE p.status = 'PAID'
+          AND (:from IS NULL OR p.paidAt >= :from)
+          AND (:to   IS NULL OR p.paidAt <= :to)
+          AND (:propertyId IS NULL OR r.property.id = :propertyId)
+        """)
+    long countDistinctBookings(
+            @Param("from")       LocalDateTime from,
+            @Param("to")         LocalDateTime to,
+            @Param("propertyId") UUID propertyId
+    );
+
+    /**
+     * Danh sách payment PAID trong kỳ để service tự group by month/week.
+     * Trả về: [paidAt, amount, type, propertyId, propertyName, bookingId]
+     */
+    @Query("""
+        SELECT p.paidAt, p.amount, p.type,
+               r.property.id, r.property.name,
+               b.id
+        FROM Payment p
+        JOIN p.booking b
+        JOIN b.room r
+        WHERE p.status = 'PAID'
+          AND (:from IS NULL OR p.paidAt >= :from)
+          AND (:to   IS NULL OR p.paidAt <= :to)
+          AND (:propertyId IS NULL OR r.property.id = :propertyId)
+        ORDER BY p.paidAt ASC
+        """)
+    List<Object[]> findRevenueRawData(
+            @Param("from")       LocalDateTime from,
+            @Param("to")         LocalDateTime to,
+            @Param("propertyId") UUID propertyId
+    );
 }
