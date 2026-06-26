@@ -8,6 +8,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -31,6 +32,13 @@ public class GlobalExceptionHandler {
         ApiResponse<Map<String, String>> response = new ApiResponse<>(
                 false, "Dữ liệu không hợp lệ", errors);
         return ResponseEntity.badRequest().body(response);
+    }
+
+    // Xử lý lỗi convert data type, vd UUID không hợp lệ
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(Exception ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Định dạng dữ liệu không hợp lệ (ví dụ: ID sai định dạng)"));
     }
 
     // Không tìm thấy resource (room, booking, user, ...)
