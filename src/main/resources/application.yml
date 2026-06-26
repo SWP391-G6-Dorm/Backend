@@ -79,3 +79,9 @@ app:
   # Tự động thêm dữ liệu demo khi khởi động (dev)
   seed:
     enabled: true
+
+vnpay:
+  tmnCode: ${VNPAY_TMN_CODE:YQ23CU6W}
+  hashSecret: ${VNPAY_HASH_SECRET:PSSN8ARRWUX199ZDTDY4Z6UTK1GCDOZB}
+  url: ${VNPAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+  returnUrl: ${VNPAY_RETURN_URL:http://localhost:8080/api/payments/vnpay/return}
