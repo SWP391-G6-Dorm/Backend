@@ -13,7 +13,7 @@ import java.util.UUID;
 @Entity
 @Table(name = "complaints",
     indexes = {
-        @Index(name = "idx_complaints_customer", columnList = "customer_id"),
+        @Index(name = "idx_complaints_user",   columnList = "user_id"),
         @Index(name = "idx_complaints_status",   columnList = "status")
     }
 )
@@ -32,8 +32,8 @@ public class Complaint {
 
     // null nếu khách gửi từ form công khai (chưa đăng nhập)
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "customer_id")
-    private User customer;
+    @JoinColumn(name = "user_id")
+    private User user;
 
     @Column(name = "subject", nullable = false, length = 255)
     private String subject;

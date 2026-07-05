@@ -1,4 +1,6 @@
 spring:
+  config:
+    import: optional:file:.env
   application:
     name: homestay-backend
 
@@ -24,20 +26,6 @@ spring:
       max-file-size: 10MB
       max-request-size: 30MB
 
-  # Google OAuth2 - client-id lấy từ .env
-  security:
-    oauth2:
-      client:
-        registration:
-          google:
-            # Fallback rỗng nếu không set .env (Google login sẽ không hoạt động)
-            client-id: ${GOOGLE_CLIENT_ID:dev-google-client-id}
-            client-secret: ${GOOGLE_CLIENT_SECRET:}
-            scope: email,profile
-  # Tắt auto-config OAuth2 để tránh lỗi thiếu client-secret khi chỉ verify token phía server
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration
 
   # Cấu hình gửi email
   mail:

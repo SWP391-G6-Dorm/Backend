@@ -26,7 +26,7 @@ import java.util.UUID;
 public class User {
 
     // Vai trò trong hệ thống
-    public enum Role { CUSTOMER, MANAGER }
+    public enum Role { ADMIN, MANAGER, EMPLOYEE, CUSTOMER }
 
     // Trạng thái tài khoản
     public enum Status { INACTIVE, ACTIVE, SUSPENDED }
