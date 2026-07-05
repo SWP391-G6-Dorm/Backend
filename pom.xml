@@ -34,11 +34,6 @@
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
 
-        <!-- Google OAuth2 Client -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-oauth2-client</artifactId>
-        </dependency>
 
         <!-- Dùng để verify Google ID Token phía server -->
         <dependency>
@@ -110,12 +105,6 @@
             <version>5.5.13.3</version>
         </dependency>
 
-        <!-- Đọc file .env -->
-        <dependency>
-            <groupId>io.github.cdimascio</groupId>
-            <artifactId>dotenv-java</artifactId>
-            <version>3.0.0</version>
-        </dependency>
 
         <!-- Test -->
         <dependency>

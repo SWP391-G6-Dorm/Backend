@@ -76,7 +76,7 @@ public class CustomerPaymentController {
         payment.setBooking(booking);
         payment.setCustomer(currentUser);
         payment.setType(Payment.Type.valueOf(type));
-        payment.setMethod(Payment.Method.E_WALLET);
+        payment.setMethod(Payment.Method.VNPAY);
         payment.setAmount(java.math.BigDecimal.valueOf(amount));
         payment.setStatus(Payment.Status.PENDING);
         paymentRepository.save(payment);
