@@ -71,6 +71,18 @@ public class ReviewService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public MyReviewResponse getReviewByIdForCustomer(UUID id, User currentUser) {
+        Review review = reviewRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
+
+        if (!review.getCustomer().getId().equals(currentUser.getId())) {
+            throw new ForbiddenException("You do not have permission to view this review");
+        }
+
+        return MyReviewResponse.fromEntity(review);
+    }
+
     @Transactional
     public MyReviewResponse updateReview(UUID id, UpdateReviewRequest request, User currentUser) {
         Review review = reviewRepository.findById(id)

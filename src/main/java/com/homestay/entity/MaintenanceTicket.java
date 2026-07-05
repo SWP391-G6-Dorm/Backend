@@ -23,8 +23,8 @@ import java.util.UUID;
 @NoArgsConstructor
 public class MaintenanceTicket {
 
-    // OPEN -> IN_PROGRESS -> RESOLVED -> CLOSED
-    public enum Status { OPEN, IN_PROGRESS, RESOLVED, CLOSED }
+    // OPEN -> ASSIGNED -> IN_PROGRESS -> RESOLVED -> CLOSED
+    public enum Status { OPEN, ASSIGNED, IN_PROGRESS, RESOLVED, CLOSED }
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -49,10 +49,17 @@ public class MaintenanceTicket {
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
-    // JSON array đường dẫn ảnh, tối đa 5 ảnh
-    // Ví dụ: ["uploads/tickets/img1.jpg", "uploads/tickets/img2.jpg"]
+    // Danh sách URL ảnh dưới dạng JSON string (chứa mảng URL)
     @Column(name = "photo_urls", columnDefinition = "TEXT")
     private String photoUrls;
+
+    // Employee được gán xử lý yêu cầu bảo trì
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_employee_id")
+    private User assignedEmployee;
+
+    @Column(name = "assigned_at")
+    private LocalDateTime assignedAt;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
@@ -61,6 +68,14 @@ public class MaintenanceTicket {
     // Manager ghi chú khi cập nhật trạng thái
     @Column(name = "resolution_note", columnDefinition = "TEXT")
     private String resolutionNote;
+
+    // Manager xác nhận hoàn thành bảo trì
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "verified_by")
+    private User verifiedBy;
+
+    @Column(name = "verified_at")
+    private LocalDateTime verifiedAt;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

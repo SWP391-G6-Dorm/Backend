@@ -11,17 +11,17 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/** SCR-15 — Customer Dashboard composite read (api-spec v1). */
 @RestController
-@RequestMapping("/api/customers")
-public class CustomerController {
+@RequestMapping("/api/v1/customer")
+public class CustomerDashboardV1Controller {
 
     private final CustomerDashboardService customerDashboardService;
 
-    public CustomerController(CustomerDashboardService customerDashboardService) {
+    public CustomerDashboardV1Controller(CustomerDashboardService customerDashboardService) {
         this.customerDashboardService = customerDashboardService;
     }
 
-    /** SCR-15 — Customer Dashboard summary (legacy) */
     @GetMapping("/dashboard")
     @PreAuthorize("hasRole('CUSTOMER')")
     public ResponseEntity<ApiResponse<CustomerDashboardResponse>> getDashboard(

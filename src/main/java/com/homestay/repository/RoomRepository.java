@@ -57,6 +57,19 @@ public interface RoomRepository extends JpaRepository<Room, UUID>, JpaSpecificat
     """)
     List<Object[]> findBookedDateRanges(@Param("roomId") UUID roomId);
 
+    // SCR-09: blocking bookings overlapping a date window
+    @Query("""
+        SELECT b.checkInDate, b.checkOutDate, b.status FROM Booking b
+        WHERE b.room.id = :roomId
+        AND b.status IN ('PENDING_DEPOSIT', 'CONFIRMED', 'CHECKED_IN', 'PENDING_INSPECTION', 'PENDING_DAMAGE_PAYMENT')
+        AND b.checkInDate <= :endDate
+        AND b.checkOutDate > :startDate
+        ORDER BY b.checkInDate
+    """)
+    List<Object[]> findBlockingBookingsInRange(@Param("roomId") UUID roomId,
+                                               @Param("startDate") LocalDate startDate,
+                                               @Param("endDate") LocalDate endDate);
+
     // Public listing filter — SCR-07/SCR-09 (keyword: tên/địa chỉ homestay, số phòng, loại phòng)
     @Query("""
         SELECT r FROM Room r

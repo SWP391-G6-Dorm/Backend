@@ -74,24 +74,28 @@ public class NotificationService {
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // 4. Xem chi tiết 1 thông báo + auto mark read (SCR-15)
+    // 4. Xem chi tiết 1 thông báo + auto mark read (SCR-14)
     // ══════════════════════════════════════════════════════════════════════════
     @Transactional
     public Map<String, Object> getNotificationDetail(UUID notifId, UUID userId) {
-        Notification notif = notificationRepository.findById(notifId)
-                .orElseThrow(() -> new ResourceNotFoundException("Notification not found"));
-
-        // Kiểm tra quyền sở hữu — chống rò rỉ dữ liệu
-        if (!notif.getUser().getId().equals(userId)) {
-            throw new BusinessException("You do not have permission to view this notification");
-        }
-
-        // Auto mark as read
+        Notification notif = findOwnedNotification(notifId, userId);
         if (!notif.getIsRead()) {
             notif.setIsRead(true);
             notificationRepository.save(notif);
         }
+        return notifToMap(notif);
+    }
 
+    // ══════════════════════════════════════════════════════════════════════════
+    // 4b. Đánh dấu 1 thông báo đã đọc (SCR-14)
+    // ══════════════════════════════════════════════════════════════════════════
+    @Transactional
+    public Map<String, Object> markAsRead(UUID notifId, UUID userId) {
+        Notification notif = findOwnedNotification(notifId, userId);
+        if (!notif.getIsRead()) {
+            notif.setIsRead(true);
+            notificationRepository.save(notif);
+        }
         return notifToMap(notif);
     }
 
@@ -129,6 +133,15 @@ public class NotificationService {
     }
 
     // ── Helper: Entity → Map ─────────────────────────────────────────────────
+    private Notification findOwnedNotification(UUID notifId, UUID userId) {
+        Notification notif = notificationRepository.findById(notifId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy thông báo"));
+        if (!notif.getUser().getId().equals(userId)) {
+            throw new BusinessException("Bạn không có quyền xem thông báo này");
+        }
+        return notif;
+    }
+
     private Map<String, Object> notifToMap(Notification n) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", n.getId().toString());

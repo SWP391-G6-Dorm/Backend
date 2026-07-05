@@ -31,6 +31,9 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
 
     Page<Payment> findByCustomerIdOrderByCreatedAtDesc(UUID customerId, Pageable pageable);
 
+    Page<Payment> findByCustomerIdAndStatusOrderByCreatedAtDesc(
+            UUID customerId, Payment.Status status, Pageable pageable);
+
     // ── SCR-59: Revenue Report queries ─────────────────────────────────────────
 
     /**

@@ -53,11 +53,8 @@ public class ActivityLog {
     @Column(name = "entity_id")
     private UUID entityId;
 
-    @Column(name = "description", columnDefinition = "TEXT")
-    private String description;
-
-    @Column(name = "ip_address", length = 45)
-    private String ipAddress;
+    @Column(name = "details", columnDefinition = "TEXT")
+    private String details;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

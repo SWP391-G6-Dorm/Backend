@@ -31,11 +31,14 @@ public class Room {
 
     // Trạng thái phòng - được quản lý tự động theo booking flow
     public enum Status {
-        AVAILABLE,       // Có thể đặt
-        PENDING_DEPOSIT, // Đã tạo booking, chờ đặt cọc
-        RESERVED,        // Đã cọc xong, booking confirmed
-        OCCUPIED,        // Khách đang ở (checked in)
-        MAINTENANCE      // Đang bảo trì, không thể đặt
+        AVAILABLE,            // Có thể đặt
+        PENDING_DEPOSIT,      // Đã tạo booking, chờ đặt cọc
+        RESERVED,             // Đã cọc xong, booking confirmed
+        OCCUPIED,             // Khách đang ở (checked in)
+        PENDING_CLEANING,     // Chờ dọn phòng (sau check-out)
+        CLEANING_IN_PROGRESS, // Đang dọn phòng
+        MAINTENANCE,          // Đang bảo trì, không thể đặt
+        OUT_OF_SERVICE        // Ngưng hoạt động
     }
 
     @Id
