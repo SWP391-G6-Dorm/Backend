@@ -16,7 +16,7 @@ public interface ComplaintRepository extends JpaRepository<Complaint, UUID> {
     @Query("SELECT c FROM Complaint c WHERE " +
            "(:status IS NULL OR c.status = :status) AND " +
            "(:search IS NULL OR LOWER(c.subject) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "OR (c.customer IS NOT NULL AND LOWER(c.customer.fullName) LIKE LOWER(CONCAT('%', :search, '%'))))")
+           "OR (c.user IS NOT NULL AND LOWER(c.user.fullName) LIKE LOWER(CONCAT('%', :search, '%'))))")
     Page<Complaint> findByFilters(
             @Param("status") Complaint.Status status,
             @Param("search") String search,

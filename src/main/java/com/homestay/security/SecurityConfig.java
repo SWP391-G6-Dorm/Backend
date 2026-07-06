@@ -45,14 +45,6 @@ public class SecurityConfig {
             .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
-            // Cấu hình lỗi xác thực trả về 401 thay vì 403 mặc định
-            .exceptionHandling(exceptions -> exceptions
-                .authenticationEntryPoint((request, response, authException) -> {
-                    response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED);
-                    response.setContentType("application/json;charset=UTF-8");
-                    response.getWriter().write("{\"success\":false,\"message\":\"Unauthorized: Token missing or expired\"}");
-                })
-            )
 
             .authorizeHttpRequests(auth -> auth
                 // Auth endpoints - ai cũng gọi được
@@ -64,7 +56,15 @@ public class SecurityConfig {
                     "/api/auth/google",
                     "/api/auth/refresh",
                     "/api/auth/forgot-password",
-                    "/api/auth/reset-password"
+                    "/api/auth/reset-password",
+                    "/api/v1/auth/**"
+                ).permitAll()
+
+                // SCR-01 landing, SCR-07 search, SCR-08 room detail — public read (api-spec v1)
+                .requestMatchers(HttpMethod.GET,
+                    "/api/v1/promotions/active",
+                    "/api/v1/properties/featured",
+                    "/api/v1/rooms/**"
                 ).permitAll()
 
                 // Xem danh sách phòng và chi tiết - không cần đăng nhập

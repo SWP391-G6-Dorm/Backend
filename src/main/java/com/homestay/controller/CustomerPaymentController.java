@@ -5,13 +5,11 @@ import com.homestay.dto.response.ApiResponse;
 import com.homestay.entity.Booking;
 import com.homestay.entity.Payment;
 import com.homestay.entity.User;
-import com.homestay.exception.ForbiddenException;
-import com.homestay.exception.ResourceNotFoundException;
 import com.homestay.repository.BookingRepository;
 import com.homestay.repository.PaymentRepository;
 import com.homestay.service.ContractService;
+import com.homestay.service.PaymentService;
 import com.homestay.service.VNPayService;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -35,15 +33,17 @@ public class CustomerPaymentController {
     private final BookingRepository bookingRepository;
     private final PaymentRepository paymentRepository;
     private final ContractService contractService;
+    private final PaymentService paymentService;
 
     public CustomerPaymentController(VNPayService vnPayService, VNPayConfig vnPayConfig,
                                      BookingRepository bookingRepository, PaymentRepository paymentRepository,
-                                     ContractService contractService) {
+                                     ContractService contractService, PaymentService paymentService) {
         this.vnPayService = vnPayService;
         this.vnPayConfig = vnPayConfig;
         this.bookingRepository = bookingRepository;
         this.paymentRepository = paymentRepository;
         this.contractService = contractService;
+        this.paymentService = paymentService;
     }
 
     @PostMapping("/vnpay/create-url")
@@ -53,40 +53,7 @@ public class CustomerPaymentController {
             @RequestParam String type,
             @AuthenticationPrincipal User currentUser) {
 
-        Booking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new ResourceNotFoundException("Booking không tồn tại"));
-
-        if (!booking.getCustomer().getId().equals(currentUser.getId())) {
-            throw new ForbiddenException("Bạn không có quyền thanh toán cho booking này");
-        }
-
-        if (type.equals("DEPOSIT") && booking.getStatus() != Booking.Status.PENDING_DEPOSIT) {
-            throw new IllegalArgumentException("Booking này không ở trạng thái chờ đặt cọc");
-        }
-
-        long amount = 0;
-        if (type.equals("DEPOSIT")) {
-            amount = booking.getTotalAmount().multiply(new java.math.BigDecimal("0.4")).longValue();
-        } else if (type.equals("REMAINING_BALANCE")) {
-            amount = booking.getTotalAmount().multiply(new java.math.BigDecimal("0.6")).longValue();
-        }
-
-        // Tạo Payment record PENDING
-        Payment payment = new Payment();
-        payment.setBooking(booking);
-        payment.setCustomer(currentUser);
-        payment.setType(Payment.Type.valueOf(type));
-        payment.setMethod(Payment.Method.E_WALLET);
-        payment.setAmount(java.math.BigDecimal.valueOf(amount));
-        payment.setStatus(Payment.Status.PENDING);
-        paymentRepository.save(payment);
-
-        String orderInfo = "Thanh toan " + type + " cho Booking " + booking.getId();
-        String paymentUrl = vnPayService.createOrder(amount, orderInfo, vnPayConfig.getVnp_ReturnUrl(), payment.getId().toString());
-
-        Map<String, String> result = new HashMap<>();
-        result.put("paymentUrl", paymentUrl);
-
+        Map<String, String> result = paymentService.createVnpayPaymentUrl(bookingId, type, currentUser);
         return ResponseEntity.ok(ApiResponse.ok("Tạo URL thanh toán thành công", result));
     }
 

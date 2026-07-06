@@ -127,36 +127,84 @@ public class MaintenanceTicketService {
         ticket.setDescription(description);
         ticket.setStatus(MaintenanceTicket.Status.OPEN);
 
-        // Handle photo uploads (save physically to disk and store file names as JSON array string)
-        if (photos != null && !photos.isEmpty()) {
-            List<String> photoUrls = new ArrayList<>();
-            java.nio.file.Path ticketUploadDir = java.nio.file.Paths.get("uploads", "tickets").toAbsolutePath();
-            try {
-                java.nio.file.Files.createDirectories(ticketUploadDir);
-            } catch (java.io.IOException e) {
-                throw new BusinessException("Failed to create upload directory: " + e.getMessage());
-            }
-
-            for (MultipartFile photo : photos) {
-                if (photo.isEmpty()) continue;
-                String savedName = UUID.randomUUID() + "_" + photo.getOriginalFilename();
-                java.nio.file.Path targetPath = ticketUploadDir.resolve(savedName);
-                try {
-                    java.nio.file.Files.copy(photo.getInputStream(), targetPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                } catch (java.io.IOException e) {
-                    throw new BusinessException("Failed to save photo: " + e.getMessage());
-                }
-                photoUrls.add("/uploads/tickets/" + savedName);
-            }
-            if (!photoUrls.isEmpty()) {
-                ticket.setPhotoUrls(photoUrls.toString());
-            }
-        }
+        savePhotosToTicket(ticket, photos);
 
         MaintenanceTicket saved = ticketRepository.saveAndFlush(ticket);
         // Re-fetch to ensure @CreationTimestamp/@UpdateTimestamp are populated
         saved = ticketRepository.findById(saved.getId()).orElse(saved);
         return ticketToMap(saved);
+    }
+
+    // ── 2b. Customer: Create ticket from booking (api-spec v1) ──
+    public Map<String, Object> createTicketFromBooking(UUID customerId, UUID bookingId, String title,
+                                                       String description, List<MultipartFile> files) {
+        if (title == null || title.isBlank()) {
+            throw new BusinessException("Tiêu đề không được để trống");
+        }
+        if (description == null || description.length() < 20) {
+            throw new BusinessException("Mô tả phải có ít nhất 20 ký tự");
+        }
+        if (files != null && files.size() > 5) {
+            throw new BusinessException("Chỉ được tải lên tối đa 5 ảnh");
+        }
+
+        User customer = userRepository.findById(customerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
+
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Đặt phòng không tồn tại"));
+
+        if (!booking.getCustomer().getId().equals(customerId)) {
+            throw new BusinessException("Bạn không có quyền tạo yêu cầu cho đặt phòng này");
+        }
+
+        if (booking.getStatus() != Booking.Status.CONFIRMED
+                && booking.getStatus() != Booking.Status.CHECKED_IN) {
+            throw new BusinessException("Chỉ có thể báo cáo sự cố cho đặt phòng đang hiệu lực");
+        }
+
+        MaintenanceTicket ticket = new MaintenanceTicket();
+        ticket.setCustomer(customer);
+        ticket.setRoom(booking.getRoom());
+        ticket.setBooking(booking);
+        ticket.setTitle(title.trim());
+        ticket.setDescription(description.trim());
+        ticket.setStatus(MaintenanceTicket.Status.OPEN);
+
+        savePhotosToTicket(ticket, files);
+
+        MaintenanceTicket saved = ticketRepository.saveAndFlush(ticket);
+        saved = ticketRepository.findById(saved.getId()).orElse(saved);
+        return ticketToMap(saved);
+    }
+
+    private void savePhotosToTicket(MaintenanceTicket ticket, List<MultipartFile> photos) {
+        if (photos == null || photos.isEmpty()) {
+            return;
+        }
+
+        List<String> photoUrls = new ArrayList<>();
+        java.nio.file.Path ticketUploadDir = java.nio.file.Paths.get("uploads", "tickets").toAbsolutePath();
+        try {
+            java.nio.file.Files.createDirectories(ticketUploadDir);
+        } catch (java.io.IOException e) {
+            throw new BusinessException("Failed to create upload directory: " + e.getMessage());
+        }
+
+        for (MultipartFile photo : photos) {
+            if (photo.isEmpty()) continue;
+            String savedName = UUID.randomUUID() + "_" + photo.getOriginalFilename();
+            java.nio.file.Path targetPath = ticketUploadDir.resolve(savedName);
+            try {
+                java.nio.file.Files.copy(photo.getInputStream(), targetPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.io.IOException e) {
+                throw new BusinessException("Failed to save photo: " + e.getMessage());
+            }
+            photoUrls.add("/uploads/tickets/" + savedName);
+        }
+        if (!photoUrls.isEmpty()) {
+            ticket.setPhotoUrls(photoUrls.toString());
+        }
     }
 
     // ── 3. Customer/Manager: Get ticket detail ──

@@ -5,12 +5,14 @@ import com.homestay.dto.request.UpdateRoomRequest;
 import com.homestay.dto.request.UpdateRoomStatusRequest;
 import com.homestay.dto.response.AvailabilityResponse;
 import com.homestay.dto.response.BookingSummaryResponse;
+import com.homestay.dto.response.MonthAvailabilityResponse;
 import com.homestay.dto.response.PageResponse;
 import com.homestay.dto.response.RoomCalendarResponse;
 import com.homestay.dto.response.RoomDetailResponse;
 import com.homestay.dto.response.RoomSummaryResponse;
 import com.homestay.entity.Floor;
 import com.homestay.entity.Property;
+import com.homestay.entity.Review;
 import com.homestay.entity.Room;
 import com.homestay.entity.RoomImage;
 import com.homestay.exception.BusinessException;
@@ -18,6 +20,7 @@ import com.homestay.exception.ResourceNotFoundException;
 import com.homestay.repository.BookingRepository;
 import com.homestay.repository.FloorRepository;
 import com.homestay.repository.PropertyRepository;
+import com.homestay.repository.ReviewRepository;
 import com.homestay.repository.RoomImageRepository;
 import com.homestay.repository.RoomRepository;
 import com.homestay.repository.spec.RoomPublicSpecifications;
@@ -35,12 +38,21 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
 public class RoomService {
+
+    private static final Set<Room.Status> MAINTENANCE_ROOM_STATUSES = Set.of(
+            Room.Status.MAINTENANCE,
+            Room.Status.OUT_OF_SERVICE,
+            Room.Status.PENDING_CLEANING,
+            Room.Status.CLEANING_IN_PROGRESS
+    );
 
     @Value("${app.upload.dir}")
     private String uploadDir;
@@ -50,17 +62,20 @@ public class RoomService {
     private final FloorRepository floorRepository;
     private final RoomImageRepository roomImageRepository;
     private final BookingRepository bookingRepository;
+    private final ReviewRepository reviewRepository;
 
     public RoomService(RoomRepository roomRepository,
                        PropertyRepository propertyRepository,
                        FloorRepository floorRepository,
                        RoomImageRepository roomImageRepository,
-                       BookingRepository bookingRepository) {
+                       BookingRepository bookingRepository,
+                       ReviewRepository reviewRepository) {
         this.roomRepository = roomRepository;
         this.propertyRepository = propertyRepository;
         this.floorRepository = floorRepository;
         this.roomImageRepository = roomImageRepository;
         this.bookingRepository = bookingRepository;
+        this.reviewRepository = reviewRepository;
     }
 
     // ── Public API ─────────────────────────────────────────────────────────────
@@ -119,6 +134,32 @@ public class RoomService {
         return RoomDetailResponse.fromEntity(room);
     }
 
+    // Đánh giá công khai của phòng (SCR-08) — chỉ PUBLISHED
+    public PageResponse<RoomDetailResponse.ReviewInfo> getPublishedReviews(UUID roomId, Pageable pageable) {
+        findById(roomId);
+        Page<Review> page = reviewRepository.findByRoom_IdAndStatusOrderByCreatedAtDesc(
+                roomId, Review.Status.PUBLISHED, pageable);
+        List<RoomDetailResponse.ReviewInfo> content = page.getContent().stream()
+                .map(this::toReviewInfo)
+                .collect(Collectors.toList());
+        return new PageResponse<>(
+                content,
+                page.getNumber(),
+                page.getSize(),
+                page.getTotalElements(),
+                page.getTotalPages());
+    }
+
+    private RoomDetailResponse.ReviewInfo toReviewInfo(Review review) {
+        RoomDetailResponse.ReviewInfo info = new RoomDetailResponse.ReviewInfo();
+        info.setId(review.getId());
+        info.setCustomerName(review.getCustomer().getFullName());
+        info.setRating(review.getRating());
+        info.setComment(review.getComment());
+        info.setCreatedAt(review.getCreatedAt());
+        return info;
+    }
+
     // Lấy lịch trống phòng cho SCR-10 calendar
     public RoomCalendarResponse getCalendar(UUID roomId) {
         Room room = findById(roomId);
@@ -146,6 +187,41 @@ public class RoomService {
                 .collect(Collectors.toList());
 
         return new AvailabilityResponse(!hasOverlap, bookedRanges);
+    }
+
+    // SCR-09 — month view: flat bookedDates + maintenanceDates for a window
+    public MonthAvailabilityResponse getMonthAvailability(UUID roomId, LocalDate startDate, LocalDate endDate) {
+        if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
+            throw new BusinessException("startDate và endDate không hợp lệ");
+        }
+        Room room = findById(roomId);
+
+        Set<String> bookedDates = new LinkedHashSet<>();
+        List<Object[]> ranges = roomRepository.findBlockingBookingsInRange(roomId, startDate, endDate);
+        for (Object[] row : ranges) {
+            LocalDate checkIn = (LocalDate) row[0];
+            LocalDate checkOut = (LocalDate) row[1];
+            LocalDate cursor = checkIn;
+            while (cursor.isBefore(checkOut)) {
+                if (!cursor.isBefore(startDate) && !cursor.isAfter(endDate)) {
+                    bookedDates.add(cursor.toString());
+                }
+                cursor = cursor.plusDays(1);
+            }
+        }
+
+        Set<String> maintenanceDates = new LinkedHashSet<>();
+        if (MAINTENANCE_ROOM_STATUSES.contains(room.getStatus())) {
+            LocalDate cursor = startDate;
+            while (!cursor.isAfter(endDate)) {
+                maintenanceDates.add(cursor.toString());
+                cursor = cursor.plusDays(1);
+            }
+        }
+
+        return new MonthAvailabilityResponse(
+                new ArrayList<>(bookedDates),
+                new ArrayList<>(maintenanceDates));
     }
 
     // ── Manager API ────────────────────────────────────────────────
