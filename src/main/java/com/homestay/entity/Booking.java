@@ -32,15 +32,21 @@ public class Booking {
      * Vòng đời booking:
      * PENDING_DEPOSIT -> (khách cọc, manager duyệt) -> CONFIRMED
      * CONFIRMED -> (check-in) -> CHECKED_IN
-     * CHECKED_IN -> (check-out) -> CHECKED_OUT
+     * CHECKED_IN -> (inspection) -> PENDING_INSPECTION
+     * PENDING_INSPECTION -> (nếu hư hại) -> PENDING_DAMAGE_PAYMENT
+     * PENDING_INSPECTION / PENDING_DAMAGE_PAYMENT -> (check-out) -> CHECKED_OUT
      * Bất kỳ lúc nào trước check-in -> CANCELLED (tiền cọc không hoàn)
+     * Quá hạn check-in -> NO_SHOW
      */
     public enum Status {
         PENDING_DEPOSIT,
         CONFIRMED,
         CHECKED_IN,
+        PENDING_INSPECTION,
+        PENDING_DAMAGE_PAYMENT,
         CHECKED_OUT,
-        CANCELLED
+        CANCELLED,
+        NO_SHOW
     }
 
     @Id
@@ -77,12 +83,36 @@ public class Booking {
     @Column(name = "remaining_amount", nullable = false, precision = 15, scale = 2)
     private BigDecimal remainingAmount;
 
+    // Phí bồi thường hư hại (được cộng sau khi Manager approve DamageReport)
+    @Column(name = "damage_fee_amount", precision = 15, scale = 2)
+    private BigDecimal damageFeeAmount;
+
     @Column(name = "special_requests", columnDefinition = "TEXT")
     private String specialRequests;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 20)
+    @Column(name = "status", nullable = false, length = 30)
     private Status status = Status.PENDING_DEPOSIT;
+
+    // Thời hạn giữ phòng (timeout 30 phút chờ thanh toán cọc)
+    @Column(name = "hold_expires_at")
+    private LocalDateTime holdExpiresAt;
+
+    // Optimistic locking cho việc tránh overbooking
+    @Version
+    @Column(name = "row_version", nullable = false, columnDefinition = "int default 0")
+    private Integer rowVersion = 0;
+
+    // Thông tin hủy booking
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cancelled_by")
+    private User cancelledBy;
+
+    @Column(name = "cancel_reason", columnDefinition = "TEXT")
+    private String cancelReason;
+
+    @Column(name = "cancelled_at")
+    private LocalDateTime cancelledAt;
 
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Payment> payments;

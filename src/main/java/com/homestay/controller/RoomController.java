@@ -10,6 +10,7 @@ import com.homestay.dto.response.PageResponse;
 import com.homestay.dto.response.RoomCalendarResponse;
 import com.homestay.dto.response.RoomDetailResponse;
 import com.homestay.dto.response.RoomSummaryResponse;
+import com.homestay.exception.BusinessException;
 import com.homestay.service.RoomService;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.PageRequest;
@@ -89,6 +90,16 @@ public class RoomController {
         return ResponseEntity.ok(ApiResponse.ok(roomService.getCalendar(id)));
     }
 
+    // Đánh giá công khai — public (SCR-08)
+    @GetMapping("/{id}/reviews")
+    public ResponseEntity<ApiResponse<PageResponse<RoomDetailResponse.ReviewInfo>>> getReviews(
+            @PathVariable UUID id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "5") int size) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                roomService.getPublishedReviews(id, PageRequest.of(page, size))));
+    }
+
     // SCR-40: Lịch sử booking của phòng — Manager view (paginated)
     @GetMapping("/{id}/bookings")
     @PreAuthorize("hasRole('MANAGER')")
@@ -106,14 +117,22 @@ public class RoomController {
         return ResponseEntity.ok(ApiResponse.ok(roomService.getRoomBookings(id, pageable)));
     }
 
-    // Kiểm tra availability - public (SCR-10)
+    // Kiểm tra availability - public (SCR-09 month view / SCR-10 range check)
     @GetMapping("/{id}/availability")
-    public ResponseEntity<ApiResponse<AvailabilityResponse>> checkAvailability(
+    public ResponseEntity<ApiResponse<?>> checkAvailability(
             @PathVariable UUID id,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
 
-        return ResponseEntity.ok(ApiResponse.ok(roomService.checkAvailability(id, checkIn, checkOut)));
+        if (startDate != null && endDate != null) {
+            return ResponseEntity.ok(ApiResponse.ok(roomService.getMonthAvailability(id, startDate, endDate)));
+        }
+        if (checkIn != null && checkOut != null) {
+            return ResponseEntity.ok(ApiResponse.ok(roomService.checkAvailability(id, checkIn, checkOut)));
+        }
+        throw new BusinessException("Cần startDate+endDate (lịch tháng) hoặc checkIn+checkOut (kiểm tra khoảng ngày)");
     }
 
     // Tạo phòng - chỉ Manager

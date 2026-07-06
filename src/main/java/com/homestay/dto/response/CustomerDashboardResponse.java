@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
-/** SCR-16 — Customer Dashboard summary */
+/** SCR-15 — Customer Dashboard summary */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

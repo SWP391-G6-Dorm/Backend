@@ -1,8 +1,12 @@
 package com.homestay.service;
 
+import com.homestay.dto.response.BookingDetailResponse;
 import com.homestay.dto.response.BookingSummaryResponse;
+import com.homestay.dto.response.CancellationPreviewResponse;
 import com.homestay.dto.response.PageResponse;
 import com.homestay.entity.Booking;
+import com.homestay.entity.Payment;
+import com.homestay.entity.Room;
 import com.homestay.entity.User;
 import com.homestay.exception.ForbiddenException;
 import com.homestay.repository.BookingRepository;
@@ -16,8 +20,6 @@ import org.springframework.stereotype.Service;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
-import com.homestay.dto.response.BookingDetailResponse;
-import com.homestay.entity.Room;
 
 @Service
 public class BookingService {
@@ -138,8 +140,75 @@ public class BookingService {
         return response;
     }
 
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public CancellationPreviewResponse getCancellationPreview(UUID id, User currentUser) {
+        if (currentUser.getRole() != User.Role.CUSTOMER) {
+            throw new ForbiddenException("Chỉ khách hàng mới có thể xem chính sách hủy");
+        }
+
+        Booking booking = bookingRepository.findById(id)
+                .orElseThrow(() -> new com.homestay.exception.ResourceNotFoundException("Booking không tồn tại"));
+
+        if (!booking.getCustomer().getId().equals(currentUser.getId())) {
+            throw new ForbiddenException("Không có quyền hủy booking này");
+        }
+
+        if (booking.getStatus() != Booking.Status.PENDING_DEPOSIT
+                && booking.getStatus() != Booking.Status.CONFIRMED) {
+            throw new IllegalArgumentException("Booking không thể hủy ở trạng thái hiện tại");
+        }
+
+        long daysUntilCheckIn = java.time.temporal.ChronoUnit.DAYS.between(
+                java.time.LocalDate.now(), booking.getCheckInDate());
+        if (daysUntilCheckIn < 0) {
+            daysUntilCheckIn = 0;
+        }
+
+        java.math.BigDecimal depositPaid = java.math.BigDecimal.ZERO;
+        List<Payment> payments = paymentRepository.findByBookingIdOrderByCreatedAtDesc(id);
+        java.util.Optional<Payment> paidDeposit = payments.stream()
+                .filter(p -> p.getType() == Payment.Type.DEPOSIT && p.getStatus() == Payment.Status.PAID)
+                .findFirst();
+        if (paidDeposit.isPresent()) {
+            depositPaid = paidDeposit.get().getAmount();
+        } else if (booking.getStatus() != Booking.Status.PENDING_DEPOSIT) {
+            depositPaid = booking.getDepositAmount() != null ? booking.getDepositAmount() : java.math.BigDecimal.ZERO;
+        }
+
+        int refundPercent;
+        String policyText;
+        if (daysUntilCheckIn >= 7) {
+            refundPercent = 100;
+            policyText = "Hủy trước 7 ngày check-in: hoàn 100% tiền cọc đã thanh toán.";
+        } else if (daysUntilCheckIn >= 3) {
+            refundPercent = 50;
+            policyText = "Hủy từ 3–6 ngày trước check-in: hoàn 50% tiền cọc đã thanh toán.";
+        } else {
+            refundPercent = 0;
+            policyText = "Hủy dưới 3 ngày trước check-in: không hoàn tiền cọc.";
+        }
+
+        java.math.BigDecimal refundAmount = depositPaid
+                .multiply(java.math.BigDecimal.valueOf(refundPercent))
+                .divide(java.math.BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
+        java.math.BigDecimal forfeitAmount = depositPaid.subtract(refundAmount);
+
+        return new CancellationPreviewResponse(
+                (int) daysUntilCheckIn,
+                refundPercent,
+                refundAmount,
+                forfeitAmount,
+                policyText
+        );
+    }
+
     @org.springframework.transaction.annotation.Transactional
     public void cancelBooking(UUID id, User currentUser) {
+        cancelBooking(id, currentUser, null);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public void cancelBooking(UUID id, User currentUser, String reason) {
         Booking booking = bookingRepository.findById(id)
                 .orElseThrow(() -> new com.homestay.exception.ResourceNotFoundException("Booking không tồn tại"));
 
@@ -156,6 +225,13 @@ public class BookingService {
         }
 
         booking.setStatus(Booking.Status.CANCELLED);
+        booking.setCancelledAt(java.time.LocalDateTime.now());
+        if (!isManager) {
+            booking.setCancelledBy(currentUser);
+        }
+        if (reason != null && !reason.isBlank()) {
+            booking.setCancelReason(reason.trim());
+        }
         // Giải phóng phòng về AVAILABLE nếu đang ở trạng thái bị giữ
         Room room = booking.getRoom();
         if (room.getStatus() != Room.Status.OCCUPIED && room.getStatus() != Room.Status.MAINTENANCE) {
