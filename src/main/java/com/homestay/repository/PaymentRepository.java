@@ -24,6 +24,28 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
                                      @Param("search") String search,
                                      Pageable pageable);
 
+    /** SCR-36 — Manager list scoped by assigned properties. */
+    @Query("""
+        SELECT p FROM Payment p
+        JOIN p.booking b
+        JOIN b.room r
+        WHERE r.property.id IN :propertyIds
+          AND (:status IS NULL OR p.status = :status)
+          AND (:type IS NULL OR p.type = :type)
+          AND (:method IS NULL OR p.method = :method)
+          AND (:search IS NULL OR
+               LOWER(p.customer.fullName) LIKE LOWER(CONCAT('%', :search, '%'))
+               OR LOWER(CAST(p.id AS string)) LIKE LOWER(CONCAT('%', :search, '%'))
+               OR LOWER(CAST(b.id AS string)) LIKE LOWER(CONCAT('%', :search, '%')))
+        """)
+    Page<Payment> findForManagerWithFilters(
+            @Param("propertyIds") List<UUID> propertyIds,
+            @Param("status") Payment.Status status,
+            @Param("type") Payment.Type type,
+            @Param("method") Payment.Method method,
+            @Param("search") String search,
+            Pageable pageable);
+
     @Query("SELECT p FROM Payment p WHERE p.booking.id = :bookingId ORDER BY p.createdAt DESC")
     List<Payment> findByBookingIdOrderByCreatedAtDesc(@Param("bookingId") UUID bookingId);
 
@@ -99,4 +121,13 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             @Param("to")         LocalDateTime to,
             @Param("propertyId") UUID propertyId
     );
+
+    @Query("""
+        SELECT COUNT(p) FROM Payment p
+        JOIN p.booking b
+        JOIN b.room r
+        WHERE r.property.id = :propertyId
+          AND p.status = 'PENDING'
+        """)
+    long countPendingByPropertyId(@Param("propertyId") UUID propertyId);
 }

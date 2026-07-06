@@ -6,84 +6,83 @@ import com.homestay.dto.response.FloorResponse;
 import com.homestay.dto.response.PropertyStructureResponse;
 import com.homestay.entity.Floor;
 import com.homestay.entity.Property;
+import com.homestay.entity.Room;
+import com.homestay.entity.User;
 import com.homestay.exception.BusinessException;
 import com.homestay.exception.ResourceNotFoundException;
 import com.homestay.repository.FloorRepository;
 import com.homestay.repository.PropertyRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class FloorService {
 
     private final FloorRepository floorRepository;
     private final PropertyRepository propertyRepository;
+    private final ReportPropertyScopeValidator scopeValidator;
 
-    public FloorService(FloorRepository floorRepository, PropertyRepository propertyRepository) {
-        this.floorRepository = floorRepository;
-        this.propertyRepository = propertyRepository;
+    // ── SCR-28 v1: Manager-scoped operations ─────────────────────────────────
+
+    @Transactional(readOnly = true)
+    public PropertyStructureResponse getStructureForManager(User manager, UUID propertyId) {
+        scopeValidator.validateManagerAccess(manager, propertyId);
+        return buildStructure(propertyId);
     }
 
-    // ── SCR-37/38: Lấy danh sách tầng của property ───────────────────────────
+    @Transactional(readOnly = true)
+    public List<FloorResponse> getByPropertyForManager(User manager, UUID propertyId) {
+        scopeValidator.validateManagerAccess(manager, propertyId);
+        return getByProperty(propertyId);
+    }
+
+    @Transactional
+    public FloorResponse createForManager(User manager, CreateFloorRequest request) {
+        UUID propertyId = UUID.fromString(request.getPropertyId());
+        scopeValidator.validateManagerAccess(manager, propertyId);
+        return create(request);
+    }
+
+    @Transactional
+    public FloorResponse updateForManager(User manager, UUID floorId, UpdateFloorRequest request) {
+        Floor floor = findFloorById(floorId);
+        scopeValidator.validateManagerAccess(manager, floor.getProperty().getId());
+        return update(floorId, request);
+    }
+
+    @Transactional
+    public void deleteForManager(User manager, UUID floorId) {
+        Floor floor = findFloorById(floorId);
+        scopeValidator.validateManagerAccess(manager, floor.getProperty().getId());
+        delete(floorId);
+    }
+
+    // ── Legacy (SCR-37/38) — no assignment scope ─────────────────────────────
+
     public List<FloorResponse> getByProperty(UUID propertyId) {
         Property property = findPropertyById(propertyId);
         return floorRepository.findByPropertyOrderByFloorNumberAsc(property)
                 .stream().map(FloorResponse::fromEntity).collect(Collectors.toList());
     }
 
-    // ── SCR-37: Property → Floors → Rooms tree ────────────────────────────────
     @Transactional(readOnly = true)
     public PropertyStructureResponse getStructure(UUID propertyId) {
-        // Bước 1: kiểm tra property tồn tại
-        Property property = findPropertyById(propertyId);
-
-        // Bước 2: lấy floors kèm rooms bằng 1 query an toàn (tránh MultipleBagFetchException)
-        List<com.homestay.entity.Floor> floors = floorRepository.findByPropertyIdWithRooms(propertyId);
-
-        // Bước 3: build response thủ công để tránh lazy load
-        PropertyStructureResponse res = new PropertyStructureResponse();
-        res.setPropertyId(property.getId());
-        res.setPropertyName(property.getName());
-
-        List<PropertyStructureResponse.FloorNode> floorNodes = floors.stream()
-                .map(f -> {
-                    PropertyStructureResponse.FloorNode fn = new PropertyStructureResponse.FloorNode();
-                    fn.setId(f.getId());
-                    fn.setFloorNumber(f.getFloorNumber());
-                    fn.setDescription(f.getDescription());
-
-                    List<PropertyStructureResponse.RoomNode> roomNodes = (f.getRooms() == null)
-                            ? java.util.List.of()
-                            : f.getRooms().stream().map(r -> {
-                                PropertyStructureResponse.RoomNode rn = new PropertyStructureResponse.RoomNode();
-                                rn.setId(r.getId());
-                                rn.setRoomNumber(r.getRoomNumber());
-                                rn.setRoomType(r.getRoomType());
-                                rn.setStatus(r.getStatus() != null ? r.getStatus().name() : null);
-                                rn.setPricePerNight(r.getPricePerNight() != null ? r.getPricePerNight().doubleValue() : null);
-                                rn.setCapacity(r.getCapacity());
-                                return rn;
-                            }).collect(Collectors.toList());
-
-                    fn.setRooms(roomNodes);
-                    return fn;
-                }).collect(Collectors.toList());
-
-        res.setFloors(floorNodes);
-        return res;
+        findPropertyById(propertyId);
+        return buildStructure(propertyId);
     }
 
-    // ── SCR-37/38: Tạo tầng mới ───────────────────────────────────────────────
     @Transactional
     public FloorResponse create(CreateFloorRequest request) {
         UUID propertyId = UUID.fromString(request.getPropertyId());
         Property property = findPropertyById(propertyId);
 
-        // Kiểm tra số tầng đã tồn tại chưa
         if (floorRepository.existsByPropertyAndFloorNumber(property, request.getFloorNumber())) {
             throw new BusinessException("Tầng " + request.getFloorNumber() + " đã tồn tại trong property này");
         }
@@ -97,13 +96,10 @@ public class FloorService {
         return FloorResponse.fromEntity(floor);
     }
 
-    // ── SCR-38: Cập nhật thông tin tầng ──────────────────────────────────────
     @Transactional
     public FloorResponse update(UUID floorId, UpdateFloorRequest request) {
-        Floor floor = floorRepository.findById(floorId)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tầng"));
+        Floor floor = findFloorById(floorId);
 
-        // Kiểm tra floor number mới không trùng với tầng khác trong cùng property
         if (request.getFloorNumber() != null
                 && !request.getFloorNumber().equals(floor.getFloorNumber())
                 && floorRepository.existsByPropertyAndFloorNumber(floor.getProperty(), request.getFloorNumber())) {
@@ -121,11 +117,9 @@ public class FloorService {
         return FloorResponse.fromEntity(floor);
     }
 
-    // ── SCR-38: Xóa tầng — không cho xóa nếu còn phòng ─────────────────────
     @Transactional
     public void delete(UUID floorId) {
-        Floor floor = floorRepository.findById(floorId)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tầng"));
+        Floor floor = findFloorById(floorId);
 
         if (floor.getRooms() != null && !floor.getRooms().isEmpty()) {
             throw new BusinessException("Không thể xóa tầng đang có phòng. Vui lòng xóa phòng trước.");
@@ -134,7 +128,53 @@ public class FloorService {
         floorRepository.delete(floor);
     }
 
-    // ── Helper ────────────────────────────────────────────────────────────────
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    private PropertyStructureResponse buildStructure(UUID propertyId) {
+        Property property = findPropertyById(propertyId);
+        List<Floor> floors = floorRepository.findByPropertyIdWithRooms(propertyId);
+
+        PropertyStructureResponse res = new PropertyStructureResponse();
+        res.setPropertyId(property.getId());
+        res.setPropertyName(property.getName());
+
+        List<PropertyStructureResponse.FloorNode> floorNodes = floors.stream()
+                .map(f -> {
+                    PropertyStructureResponse.FloorNode fn = new PropertyStructureResponse.FloorNode();
+                    fn.setId(f.getId());
+                    fn.setFloorNumber(f.getFloorNumber());
+                    fn.setDescription(f.getDescription());
+
+                    List<PropertyStructureResponse.RoomNode> roomNodes = (f.getRooms() == null)
+                            ? List.of()
+                            : f.getRooms().stream()
+                                    .sorted(Comparator.comparing(Room::getRoomNumber))
+                                    .map(r -> {
+                                        PropertyStructureResponse.RoomNode rn = new PropertyStructureResponse.RoomNode();
+                                        rn.setId(r.getId());
+                                        rn.setRoomNumber(r.getRoomNumber());
+                                        rn.setRoomType(r.getRoomType());
+                                        rn.setStatus(r.getStatus() != null ? r.getStatus().name() : null);
+                                        rn.setPricePerNight(r.getPricePerNight() != null
+                                                ? r.getPricePerNight().doubleValue() : null);
+                                        rn.setCapacity(r.getCapacity());
+                                        return rn;
+                                    }).collect(Collectors.toList());
+
+                    fn.setRoomCount(roomNodes.size());
+                    fn.setRooms(roomNodes);
+                    return fn;
+                }).collect(Collectors.toList());
+
+        res.setFloors(floorNodes);
+        return res;
+    }
+
+    private Floor findFloorById(UUID floorId) {
+        return floorRepository.findById(floorId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tầng"));
+    }
+
     private Property findPropertyById(UUID id) {
         return propertyRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy property"));

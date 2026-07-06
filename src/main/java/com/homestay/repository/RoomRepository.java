@@ -19,6 +19,10 @@ public interface RoomRepository extends JpaRepository<Room, UUID>, JpaSpecificat
     // Tìm phòng theo property
     Page<Room> findByPropertyId(UUID propertyId, Pageable pageable);
 
+    long countByPropertyId(UUID propertyId);
+
+    long countByPropertyIdAndStatus(UUID propertyId, Room.Status status);
+
     // Tìm phòng theo floor
     List<Room> findByFloorId(UUID floorId);
 
@@ -122,6 +126,26 @@ public interface RoomRepository extends JpaRepository<Room, UUID>, JpaSpecificat
             @Param("propertyId") UUID propertyId,
             @Param("floorId")    UUID floorId,
             @Param("roomType")   String roomType,
+            Pageable pageable
+    );
+
+    // SCR-29: Manager list scoped to assigned properties
+    @Query("""
+        SELECT r FROM Room r
+        WHERE (:search IS NULL OR
+               LOWER(r.roomNumber) LIKE LOWER(CONCAT('%', :search, '%')) OR
+               LOWER(r.roomType)   LIKE LOWER(CONCAT('%', :search, '%')))
+        AND (:status IS NULL OR r.status = :status)
+        AND r.property.id IN :propertyIds
+        AND (:floorId IS NULL OR r.floor.id = :floorId)
+        AND (:roomType IS NULL OR LOWER(r.roomType) = LOWER(:roomType))
+        """)
+    Page<Room> findWithFiltersInProperties(
+            @Param("search")      String search,
+            @Param("status")      Room.Status status,
+            @Param("propertyIds") List<UUID> propertyIds,
+            @Param("floorId")     UUID floorId,
+            @Param("roomType")    String roomType,
             Pageable pageable
     );
 

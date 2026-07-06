@@ -1,6 +1,7 @@
 package com.homestay.service;
 
 import com.homestay.dto.request.CreateRoomRequest;
+import com.homestay.dto.request.ReorderImagesRequest;
 import com.homestay.dto.request.UpdateRoomRequest;
 import com.homestay.dto.request.UpdateRoomStatusRequest;
 import com.homestay.dto.response.AvailabilityResponse;
@@ -14,11 +15,13 @@ import com.homestay.entity.Floor;
 import com.homestay.entity.Property;
 import com.homestay.entity.Review;
 import com.homestay.entity.Room;
+import com.homestay.entity.User;
 import com.homestay.entity.RoomImage;
 import com.homestay.exception.BusinessException;
 import com.homestay.exception.ResourceNotFoundException;
 import com.homestay.repository.BookingRepository;
 import com.homestay.repository.FloorRepository;
+import com.homestay.repository.ManagerPropertyAssignmentRepository;
 import com.homestay.repository.PropertyRepository;
 import com.homestay.repository.ReviewRepository;
 import com.homestay.repository.RoomImageRepository;
@@ -40,8 +43,10 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -54,6 +59,12 @@ public class RoomService {
             Room.Status.CLEANING_IN_PROGRESS
     );
 
+    private static final Set<Room.Status> MANAGER_SETTABLE_STATUSES = Set.of(
+            Room.Status.AVAILABLE,
+            Room.Status.MAINTENANCE,
+            Room.Status.OUT_OF_SERVICE
+    );
+
     @Value("${app.upload.dir}")
     private String uploadDir;
 
@@ -63,19 +74,25 @@ public class RoomService {
     private final RoomImageRepository roomImageRepository;
     private final BookingRepository bookingRepository;
     private final ReviewRepository reviewRepository;
+    private final ReportPropertyScopeValidator scopeValidator;
+    private final ManagerPropertyAssignmentRepository assignmentRepository;
 
     public RoomService(RoomRepository roomRepository,
                        PropertyRepository propertyRepository,
                        FloorRepository floorRepository,
                        RoomImageRepository roomImageRepository,
                        BookingRepository bookingRepository,
-                       ReviewRepository reviewRepository) {
+                       ReviewRepository reviewRepository,
+                       ReportPropertyScopeValidator scopeValidator,
+                       ManagerPropertyAssignmentRepository assignmentRepository) {
         this.roomRepository = roomRepository;
         this.propertyRepository = propertyRepository;
         this.floorRepository = floorRepository;
         this.roomImageRepository = roomImageRepository;
         this.bookingRepository = bookingRepository;
         this.reviewRepository = reviewRepository;
+        this.scopeValidator = scopeValidator;
+        this.assignmentRepository = assignmentRepository;
     }
 
     // ── Public API ─────────────────────────────────────────────────────────────
@@ -131,6 +148,14 @@ public class RoomService {
     // Lấy chi tiết phòng (public - SCR-08)
     public RoomDetailResponse getById(UUID id) {
         Room room = findById(id);
+        return RoomDetailResponse.fromEntity(room);
+    }
+
+    /** SCR-31 — Manager-scoped room detail (v1). */
+    @Transactional(readOnly = true)
+    public RoomDetailResponse getByIdForManager(User manager, UUID id) {
+        Room room = findById(id);
+        scopeValidator.validateManagerAccess(manager, room.getProperty().getId());
         return RoomDetailResponse.fromEntity(room);
     }
 
@@ -262,6 +287,55 @@ public class RoomService {
         return toPageResponse(page);
     }
 
+    /** SCR-29 — Manager room list with property assignment scope (v1). */
+    @Transactional(readOnly = true)
+    public PageResponse<RoomSummaryResponse> getAllForManagerScoped(
+            User manager,
+            String search, String status, String propertyIdStr,
+            String floorIdStr, String roomType, Pageable pageable) {
+
+        Room.Status statusEnum = parseStatus(status);
+        UUID floorId = parseUuid(floorIdStr);
+        String cleanSearch   = blankToNull(search);
+        String cleanRoomType = blankToNull(roomType);
+
+        Page<Room> page;
+        if (propertyIdStr != null && !propertyIdStr.isBlank()) {
+            UUID propertyId = UUID.fromString(propertyIdStr);
+            scopeValidator.validateManagerAccess(manager, propertyId);
+            page = roomRepository.findWithFilters(
+                    cleanSearch, statusEnum, propertyId, floorId, cleanRoomType, pageable);
+        } else {
+            List<UUID> assignedIds = assignmentRepository.findActivePropertiesByManagerId(manager.getId())
+                    .stream().map(Property::getId).toList();
+            if (assignedIds.isEmpty()) {
+                page = Page.empty(pageable);
+            } else {
+                page = roomRepository.findWithFiltersInProperties(
+                        cleanSearch, statusEnum, assignedIds, floorId, cleanRoomType, pageable);
+            }
+        }
+        return toPageResponse(page);
+    }
+
+    private static Room.Status parseStatus(String status) {
+        if (status == null || status.isBlank()) return null;
+        try {
+            return Room.Status.valueOf(status.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private static UUID parseUuid(String value) {
+        if (value == null || value.isBlank()) return null;
+        return UUID.fromString(value);
+    }
+
+    private static String blankToNull(String value) {
+        return (value != null && !value.isBlank()) ? value.trim() : null;
+    }
+
     // SCR-39: Xóa phòng — chỉ cho phép khi không có booking active
     @Transactional
     public void deleteRoom(UUID id) {
@@ -299,10 +373,21 @@ public class RoomService {
         room.setCapacity(request.getCapacity());
         room.setArea(request.getArea());
         room.setDescription(request.getDescription());
+        room.setAmenities(request.getAmenities() != null
+                ? new ArrayList<>(request.getAmenities())
+                : new ArrayList<>());
         room.setStatus(Room.Status.AVAILABLE);
 
         roomRepository.save(room);
         return RoomDetailResponse.fromEntity(room);
+    }
+
+    /** SCR-30 — Manager-scoped room create (v1). */
+    @Transactional
+    public RoomDetailResponse createForManager(User manager, CreateRoomRequest request) {
+        UUID propertyId = UUID.fromString(request.getPropertyId());
+        scopeValidator.validateManagerAccess(manager, propertyId);
+        return create(request);
     }
 
     // Cập nhật thông tin phòng
@@ -310,18 +395,39 @@ public class RoomService {
     public RoomDetailResponse update(UUID id, UpdateRoomRequest request) {
         Room room = findById(id);
 
+        if (request.getFloorId() != null && !request.getFloorId().isBlank()) {
+            UUID floorId = UUID.fromString(request.getFloorId());
+            Floor floor = floorRepository.findById(floorId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tầng"));
+            if (!floor.getProperty().getId().equals(room.getProperty().getId())) {
+                throw new BusinessException("Tầng không thuộc property này");
+            }
+            room.setFloor(floor);
+        }
+
         if (request.getRoomNumber() != null) room.setRoomNumber(request.getRoomNumber());
         if (request.getRoomType() != null) room.setRoomType(request.getRoomType());
         if (request.getPricePerNight() != null) room.setPricePerNight(request.getPricePerNight());
         if (request.getCapacity() != null) room.setCapacity(request.getCapacity());
         if (request.getArea() != null) room.setArea(request.getArea());
         if (request.getDescription() != null) room.setDescription(request.getDescription());
+        if (request.getAmenities() != null) {
+            room.setAmenities(new ArrayList<>(request.getAmenities()));
+        }
 
         roomRepository.save(room);
         return RoomDetailResponse.fromEntity(room);
     }
 
-    // Cập nhật trạng thái phòng (Manager đặt AVAILABLE hoặc MAINTENANCE)
+    /** SCR-31 — Manager-scoped room update (v1). */
+    @Transactional
+    public RoomDetailResponse updateForManager(User manager, UUID id, UpdateRoomRequest request) {
+        Room room = findById(id);
+        scopeValidator.validateManagerAccess(manager, room.getProperty().getId());
+        return update(id, request);
+    }
+
+    // Cập nhật trạng thái phòng (Manager — SCR-33)
     @Transactional
     public RoomDetailResponse updateStatus(UUID id, UpdateRoomStatusRequest request) {
         Room room = findById(id);
@@ -333,14 +439,45 @@ public class RoomService {
             throw new BusinessException("Trạng thái không hợp lệ: " + request.getStatus());
         }
 
-        // Manager chỉ được phép set AVAILABLE hoặc MAINTENANCE thủ công
-        if (newStatus != Room.Status.AVAILABLE && newStatus != Room.Status.MAINTENANCE) {
-            throw new BusinessException("Manager chỉ được đặt trạng thái AVAILABLE hoặc MAINTENANCE");
+        if (!MANAGER_SETTABLE_STATUSES.contains(newStatus)) {
+            throw new BusinessException("Manager chỉ được đặt trạng thái AVAILABLE, MAINTENANCE hoặc OUT_OF_SERVICE");
+        }
+
+        String reasonText = resolveStatusReason(request);
+
+        if (newStatus == Room.Status.MAINTENANCE || newStatus == Room.Status.OUT_OF_SERVICE) {
+            if (reasonText == null || reasonText.isBlank()) {
+                throw new BusinessException("Vui lòng nhập lý do");
+            }
+            if (request.getStartDate() == null || request.getEndDate() == null) {
+                throw new BusinessException("Vui lòng chọn từ ngày và đến ngày");
+            }
+            if (request.getEndDate().isBefore(request.getStartDate())) {
+                throw new BusinessException("Đến ngày phải sau hoặc bằng từ ngày");
+            }
         }
 
         room.setStatus(newStatus);
         roomRepository.save(room);
         return RoomDetailResponse.fromEntity(room);
+    }
+
+    /** SCR-33 — Manager-scoped status update (v1). */
+    @Transactional
+    public RoomDetailResponse updateStatusForManager(User manager, UUID id, UpdateRoomStatusRequest request) {
+        Room room = findById(id);
+        scopeValidator.validateManagerAccess(manager, room.getProperty().getId());
+        return updateStatus(id, request);
+    }
+
+    private static String resolveStatusReason(UpdateRoomStatusRequest request) {
+        if (request.getReason() != null && !request.getReason().isBlank()) {
+            return request.getReason().trim();
+        }
+        if (request.getNote() != null && !request.getNote().isBlank()) {
+            return request.getNote().trim();
+        }
+        return null;
     }
 
     // Upload ảnh cho phòng — trả về list ảnh mới (SCR-43)
@@ -398,6 +535,30 @@ public class RoomService {
         return result;
     }
 
+    @Transactional
+    public List<RoomDetailResponse.RoomImageInfo> reorderImages(UUID roomId, List<UUID> imageIds) {
+        List<RoomImage> existing = roomImageRepository.findByRoomIdOrderBySortOrderAsc(roomId);
+        Set<UUID> existingIds = existing.stream().map(RoomImage::getId).collect(Collectors.toSet());
+        Set<UUID> requestedIds = new LinkedHashSet<>(imageIds);
+
+        if (existing.isEmpty() || existingIds.size() != requestedIds.size() || !existingIds.equals(requestedIds)) {
+            throw new BusinessException("Danh sách ảnh không hợp lệ");
+        }
+
+        Map<UUID, RoomImage> byId = existing.stream()
+                .collect(Collectors.toMap(RoomImage::getId, Function.identity()));
+
+        for (int i = 0; i < imageIds.size(); i++) {
+            RoomImage img = byId.get(imageIds.get(i));
+            img.setSortOrder(i);
+            roomImageRepository.save(img);
+        }
+
+        return roomImageRepository.findByRoomIdOrderBySortOrderAsc(roomId).stream()
+                .map(this::toRoomImageInfo)
+                .collect(Collectors.toList());
+    }
+
     // Set ảnh làm primary (SCR-43)
     @Transactional
     public void setPrimaryImage(UUID imageId) {
@@ -415,12 +576,79 @@ public class RoomService {
     public void deleteImage(UUID imageId) {
         RoomImage image = roomImageRepository.findById(imageId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy ảnh"));
+        boolean wasPrimary = Boolean.TRUE.equals(image.getIsPrimary());
+        UUID roomId = image.getRoom().getId();
         // Xóa file vật lý nếu tồn tại
         try {
             Path filePath = Paths.get(image.getImageUrl().replaceFirst("^/", ""));
             Files.deleteIfExists(filePath);
         } catch (IOException ignored) {}
         roomImageRepository.delete(image);
+
+        if (wasPrimary) {
+            List<RoomImage> remaining = roomImageRepository.findByRoomIdOrderBySortOrderAsc(roomId);
+            if (!remaining.isEmpty()) {
+                RoomImage next = remaining.get(0);
+                roomImageRepository.clearPrimaryByRoomId(roomId);
+                next.setIsPrimary(true);
+                roomImageRepository.save(next);
+            }
+        }
+    }
+
+    // ── SCR-32 v1: Manager-scoped gallery ─────────────────────────────────────
+
+    @Transactional
+    public List<RoomDetailResponse.RoomImageInfo> uploadImagesForManager(
+            User manager, UUID roomId, List<MultipartFile> files, boolean setPrimary) {
+        validateManagerRoomAccess(manager, roomId);
+        return uploadImages(roomId, files, setPrimary);
+    }
+
+    @Transactional
+    public void deleteImageForManager(User manager, UUID roomId, UUID imageId) {
+        validateManagerRoomAccess(manager, roomId);
+        assertImageBelongsToRoom(roomId, imageId);
+        deleteImage(imageId);
+    }
+
+    @Transactional
+    public void setPrimaryImageForManager(User manager, UUID roomId, UUID imageId) {
+        validateManagerRoomAccess(manager, roomId);
+        assertImageBelongsToRoom(roomId, imageId);
+        setPrimaryImage(imageId);
+    }
+
+    @Transactional
+    public List<RoomDetailResponse.RoomImageInfo> reorderImagesForManager(
+            User manager, UUID roomId, ReorderImagesRequest request) {
+        validateManagerRoomAccess(manager, roomId);
+        List<UUID> imageIds = request.getImageIds().stream()
+                .map(UUID::fromString)
+                .collect(Collectors.toList());
+        return reorderImages(roomId, imageIds);
+    }
+
+    private void validateManagerRoomAccess(User manager, UUID roomId) {
+        Room room = findById(roomId);
+        scopeValidator.validateManagerAccess(manager, room.getProperty().getId());
+    }
+
+    private void assertImageBelongsToRoom(UUID roomId, UUID imageId) {
+        RoomImage image = roomImageRepository.findById(imageId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy ảnh"));
+        if (!image.getRoom().getId().equals(roomId)) {
+            throw new BusinessException("Ảnh không thuộc phòng này");
+        }
+    }
+
+    private RoomDetailResponse.RoomImageInfo toRoomImageInfo(RoomImage saved) {
+        RoomDetailResponse.RoomImageInfo info = new RoomDetailResponse.RoomImageInfo();
+        info.setId(saved.getId());
+        info.setImageUrl(saved.getImageUrl());
+        info.setIsPrimary(saved.getIsPrimary());
+        info.setSortOrder(saved.getSortOrder());
+        return info;
     }
 
     // ── Private helper ────────────────────────────────────────────────────────
