@@ -5,12 +5,15 @@ import jakarta.validation.constraints.Min;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Data
 public class UpdateRoomRequest {
 
     // Optional fields — all null-safe in RoomService.update()
     // Validation only triggers when value is provided (non-null)
+
+    private String floorId;
 
     private String roomNumber;   // no @NotBlank — optional partial update
 
@@ -26,4 +29,6 @@ public class UpdateRoomRequest {
     private BigDecimal area;
 
     private String description;
+
+    private List<String> amenities;
 }

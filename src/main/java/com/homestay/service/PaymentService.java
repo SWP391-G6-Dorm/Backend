@@ -7,10 +7,12 @@ import com.homestay.dto.response.PaymentDetailResponse;
 import com.homestay.dto.response.PaymentSummaryResponse;
 import com.homestay.entity.Booking;
 import com.homestay.entity.Payment;
+import com.homestay.entity.Property;
 import com.homestay.entity.User;
 import com.homestay.exception.ForbiddenException;
 import com.homestay.exception.ResourceNotFoundException;
 import com.homestay.repository.BookingRepository;
+import com.homestay.repository.ManagerPropertyAssignmentRepository;
 import com.homestay.repository.PaymentRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -35,17 +37,23 @@ public class PaymentService {
     private final ContractService contractService;
     private final VNPayService vnPayService;
     private final VNPayConfig vnPayConfig;
+    private final ReportPropertyScopeValidator scopeValidator;
+    private final ManagerPropertyAssignmentRepository assignmentRepository;
 
     public PaymentService(PaymentRepository paymentRepository,
                           BookingRepository bookingRepository,
                           ContractService contractService,
                           VNPayService vnPayService,
-                          VNPayConfig vnPayConfig) {
+                          VNPayConfig vnPayConfig,
+                          ReportPropertyScopeValidator scopeValidator,
+                          ManagerPropertyAssignmentRepository assignmentRepository) {
         this.paymentRepository = paymentRepository;
         this.bookingRepository = bookingRepository;
         this.contractService = contractService;
         this.vnPayService = vnPayService;
         this.vnPayConfig = vnPayConfig;
+        this.scopeValidator = scopeValidator;
+        this.assignmentRepository = assignmentRepository;
     }
 
     @Transactional
@@ -113,6 +121,54 @@ public class PaymentService {
         String searchParam = (search != null && !search.isBlank()) ? search.trim() : null;
 
         Page<Payment> result = paymentRepository.findAllWithFilters(paymentStatus, searchParam, pageable);
+
+        return new PageResponse<>(
+                result.getContent().stream().map(PaymentSummaryResponse::fromEntity).toList(),
+                result.getNumber(),
+                result.getSize(),
+                result.getTotalElements(),
+                result.getTotalPages()
+        );
+    }
+
+    /** SCR-36 — Manager payment list scoped to assigned properties (v1). */
+    @Transactional(readOnly = true)
+    public PageResponse<PaymentSummaryResponse> getPaymentsForManagerScoped(
+            User manager,
+            String propertyIdStr,
+            String status,
+            String type,
+            String method,
+            String search,
+            int page,
+            int size,
+            String sort
+    ) {
+        Pageable pageable = buildPageable(page, size, sort);
+
+        List<UUID> propertyIds;
+        if (propertyIdStr != null && !propertyIdStr.isBlank()) {
+            UUID propertyId = UUID.fromString(propertyIdStr.trim());
+            scopeValidator.validateManagerAccess(manager, propertyId);
+            propertyIds = List.of(propertyId);
+        } else {
+            propertyIds = assignmentRepository.findActivePropertiesByManagerId(manager.getId())
+                    .stream()
+                    .map(Property::getId)
+                    .toList();
+        }
+
+        if (propertyIds.isEmpty()) {
+            return new PageResponse<>(List.of(), page, size, 0, 0);
+        }
+
+        Payment.Status paymentStatus = parseStatus(status);
+        Payment.Type paymentType = parseType(type);
+        Payment.Method paymentMethod = parseMethod(method);
+        String cleanSearch = (search != null && !search.isBlank()) ? search.trim() : null;
+
+        Page<Payment> result = paymentRepository.findForManagerWithFilters(
+                propertyIds, paymentStatus, paymentType, paymentMethod, cleanSearch, pageable);
 
         return new PageResponse<>(
                 result.getContent().stream().map(PaymentSummaryResponse::fromEntity).toList(),
@@ -204,6 +260,24 @@ public class PaymentService {
         if (status == null || status.isBlank() || status.equalsIgnoreCase("ALL")) return null;
         try {
             return Payment.Status.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private static Payment.Type parseType(String type) {
+        if (type == null || type.isBlank()) return null;
+        try {
+            return Payment.Type.valueOf(type.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private static Payment.Method parseMethod(String method) {
+        if (method == null || method.isBlank()) return null;
+        try {
+            return Payment.Method.valueOf(method.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
             return null;
         }

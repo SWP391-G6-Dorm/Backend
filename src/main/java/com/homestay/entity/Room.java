@@ -5,10 +5,13 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -75,6 +78,10 @@ public class Room {
 
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "amenities")
+    private List<String> amenities = new ArrayList<>();
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
