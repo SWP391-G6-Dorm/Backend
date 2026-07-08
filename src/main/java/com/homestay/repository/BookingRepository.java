@@ -104,4 +104,32 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             @Param("propertyId") UUID propertyId,
             @Param("from") java.time.LocalDateTime from,
             @Param("to") java.time.LocalDateTime to);
+
+    /** SCR-44 — Occupancy: các booking chiếm phòng overlapping khoảng ngày (đêm-phòng). */
+    @Query("""
+        SELECT b.checkInDate, b.checkOutDate FROM Booking b
+        JOIN b.room r
+        WHERE r.property.id = :propertyId
+          AND b.status IN :statuses
+          AND b.checkInDate < :rangeEndExclusive
+          AND b.checkOutDate > :rangeStart
+        """)
+    List<Object[]> findOccupancyRawData(
+            @Param("propertyId") UUID propertyId,
+            @Param("statuses") List<Booking.Status> statuses,
+            @Param("rangeStart") LocalDate rangeStart,
+            @Param("rangeEndExclusive") LocalDate rangeEndExclusive);
+
+    /** SCR-44 — Booking Trend: thời điểm tạo booking của property trong khoảng. */
+    @Query("""
+        SELECT b.createdAt FROM Booking b
+        JOIN b.room r
+        WHERE r.property.id = :propertyId
+          AND b.createdAt >= :from
+          AND b.createdAt <= :to
+        """)
+    List<java.time.LocalDateTime> findBookingCreationTimes(
+            @Param("propertyId") UUID propertyId,
+            @Param("from") java.time.LocalDateTime from,
+            @Param("to") java.time.LocalDateTime to);
 }

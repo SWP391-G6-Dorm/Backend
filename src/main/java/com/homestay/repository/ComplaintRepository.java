@@ -22,4 +22,19 @@ public interface ComplaintRepository extends JpaRepository<Complaint, UUID> {
             @Param("search") String search,
             Pageable pageable
     );
+
+    // SCR-54: Admin complaint list. LEFT JOIN FETCH user (nullable guest). Enum via param.
+    @Query(value = """
+            SELECT c FROM Complaint c
+            LEFT JOIN FETCH c.user u
+            WHERE (:status IS NULL OR c.status = :status)
+            ORDER BY c.createdAt DESC
+            """,
+            countQuery = """
+            SELECT COUNT(c) FROM Complaint c
+            WHERE (:status IS NULL OR c.status = :status)
+            """)
+    Page<Complaint> findForAdmin(
+            @Param("status") Complaint.Status status,
+            Pageable pageable);
 }

@@ -24,4 +24,15 @@ public interface ManagerPropertyAssignmentRepository extends JpaRepository<Manag
         ORDER BY mpa.property.name ASC
         """)
     List<Property> findActivePropertiesByManagerId(@Param("managerId") UUID managerId);
+
+    /** SCR-46 — Manager (kèm user) theo danh sách property, gộp 1 query để tránh N+1. */
+    @Query("""
+        SELECT mpa FROM ManagerPropertyAssignment mpa
+        JOIN FETCH mpa.manager
+        WHERE mpa.property.id IN :propertyIds
+          AND mpa.status = :status
+        """)
+    List<ManagerPropertyAssignment> findActiveByPropertyIds(
+            @Param("propertyIds") List<UUID> propertyIds,
+            @Param("status") ManagerPropertyAssignment.Status status);
 }

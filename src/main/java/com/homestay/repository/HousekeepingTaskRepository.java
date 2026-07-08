@@ -123,5 +123,41 @@ public interface HousekeepingTaskRepository extends JpaRepository<HousekeepingTa
             @Param("roomId") UUID roomId,
             @Param("statuses") Collection<HousekeepingTask.Status> statuses);
 
+    // SCR-59: pending HK tasks for employee dashboard KPI
+    long countByAssignedEmployeeIdAndStatusIn(
+            UUID employeeId,
+            Collection<HousekeepingTask.Status> statuses);
+
+    // SCR-60: employee housekeeping workspace
+    @Query(
+            value = """
+            SELECT t FROM HousekeepingTask t
+            JOIN FETCH t.room r
+            LEFT JOIN FETCH r.floor
+            WHERE t.assignedEmployee.id = :employeeId
+              AND (:status IS NULL OR t.status = :status)
+            ORDER BY t.createdAt DESC
+            """,
+            countQuery = """
+            SELECT COUNT(t) FROM HousekeepingTask t
+            WHERE t.assignedEmployee.id = :employeeId
+              AND (:status IS NULL OR t.status = :status)
+            """)
+    Page<HousekeepingTask> findForEmployee(
+            @Param("employeeId") UUID employeeId,
+            @Param("status") HousekeepingTask.Status status,
+            Pageable pageable);
+
+    @Query("""
+            SELECT t FROM HousekeepingTask t
+            JOIN FETCH t.room r
+            LEFT JOIN FETCH r.floor
+            WHERE t.id = :id
+              AND t.assignedEmployee.id = :employeeId
+            """)
+    Optional<HousekeepingTask> findByIdAndAssignedEmployeeId(
+            @Param("id") UUID id,
+            @Param("employeeId") UUID employeeId);
+
 }
 
