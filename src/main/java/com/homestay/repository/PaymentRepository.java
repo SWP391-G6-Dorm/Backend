@@ -130,4 +130,32 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
           AND p.status = 'PENDING'
         """)
     long countPendingByPropertyId(@Param("propertyId") UUID propertyId);
+
+    // ── SCR-52: Payment Reconciliation (VNPAY discrepancies) ────────────────────
+    // Payment VNPAY bi lech: (a) gateway '00' nhung chua PAID; (b) PAID nhung gateway khong xac nhan;
+    // (c) PENDING va chua nhan IPN (timeout). enum truyen qua param; JOIN FETCH booking tranh N+1.
+    @Query(value = """
+        SELECT p FROM Payment p
+        JOIN FETCH p.booking
+        WHERE p.method = :vnpay
+          AND (
+            (p.gatewayResponseCode = '00' AND p.status <> :paid)
+            OR (p.status = :paid AND (p.gatewayResponseCode IS NULL OR p.gatewayResponseCode <> '00'))
+            OR (p.status = :pending AND p.ipnReceivedAt IS NULL)
+          )
+        """,
+        countQuery = """
+        SELECT COUNT(p) FROM Payment p
+        WHERE p.method = :vnpay
+          AND (
+            (p.gatewayResponseCode = '00' AND p.status <> :paid)
+            OR (p.status = :paid AND (p.gatewayResponseCode IS NULL OR p.gatewayResponseCode <> '00'))
+            OR (p.status = :pending AND p.ipnReceivedAt IS NULL)
+          )
+        """)
+    Page<Payment> findVnpayDiscrepancies(
+            @Param("vnpay") Payment.Method vnpay,
+            @Param("paid") Payment.Status paid,
+            @Param("pending") Payment.Status pending,
+            Pageable pageable);
 }

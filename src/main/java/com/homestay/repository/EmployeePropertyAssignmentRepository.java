@@ -52,6 +52,16 @@ public interface EmployeePropertyAssignmentRepository extends JpaRepository<Empl
             UUID employeeId,
             EmployeePropertyAssignment.Status status);
 
+    // SCR-59: all ACTIVE property assignments for employee KPI scope
+    @Query("""
+            SELECT epa.property.id FROM EmployeePropertyAssignment epa
+            WHERE epa.employee.id = :employeeId
+              AND epa.status = :status
+            """)
+    List<UUID> findPropertyIdsByEmployeeIdAndStatus(
+            @Param("employeeId") UUID employeeId,
+            @Param("status") EmployeePropertyAssignment.Status status);
+
     @Query("""
             SELECT u FROM User u
             WHERE u.role = :employeeRole
