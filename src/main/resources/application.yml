@@ -1,6 +1,7 @@
 spring:
   config:
-    import: optional:file:.env
+    # [.properties] hint required — bare ".env" has no extension Spring recognizes
+    import: optional:file:./.env[.properties],optional:file:../.env[.properties]
   application:
     name: homestay-backend
 
@@ -27,11 +28,14 @@ spring:
       max-request-size: 30MB
 
 
-  # Cấu hình gửi email
+  # Cấu hình gửi email — credentials/host từ .env:
+  #   MAIL_USERNAME, MAIL_PASSWORD (Gmail/Google Workspace: App Password 16 ký tự)
+  #   MAIL_HOST (optional, default smtp.gmail.com), MAIL_PORT (optional, default 587)
+  # MailConfig binds MAIL_* explicitly. @fpt.edu.vn phải là Google Workspace + App Password
+  # mới gửi qua smtp.gmail.com; provider khác thì đặt MAIL_HOST phù hợp.
   mail:
-    host: smtp.gmail.com
-    port: 587
-    # Fallback để app không crash khi thiếu .env (email sẽ không gửi được)
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
     username: ${MAIL_USERNAME:no-reply@dev.local}
     password: ${MAIL_PASSWORD:dev-password}
     properties:
@@ -40,6 +44,10 @@ spring:
           auth: true
           starttls:
             enable: true
+            required: true
+          connectiontimeout: 10000
+          timeout: 10000
+          writetimeout: 10000
 
 server:
   port: 8080

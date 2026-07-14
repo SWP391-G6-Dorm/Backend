@@ -15,13 +15,17 @@ import com.homestay.exception.ResourceNotFoundException;
 import com.homestay.repository.RefreshTokenRepository;
 import com.homestay.repository.UserRepository;
 import com.homestay.security.JwtTokenProvider;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
+import jakarta.mail.internet.MimeMessage;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.Optional;
@@ -31,8 +35,14 @@ import java.util.UUID;
 @Service
 public class AuthService {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+
     @Value("${app.google.client-id}")
     private String googleClientId;
+
+    /** Prefer MAIL_USERNAME so From matches the SMTP authenticated account (required by Gmail). */
+    @Value("${MAIL_USERNAME:${spring.mail.username:}}")
+    private String mailFrom;
 
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
@@ -305,23 +315,47 @@ public class AuthService {
         return String.valueOf(100000 + new Random().nextInt(900000));
     }
 
-    // Gửi email chứa OTP
+    // Gửi email chứa OTP — failure must surface so register/resend do not look successful
     private void sendOtpEmail(String to, String otp, String subject) {
+        String from = resolveMailFrom();
+        if (!StringUtils.hasText(from) || "no-reply@dev.local".equalsIgnoreCase(from.trim())) {
+            throw new BusinessException(
+                    "Không gửi được email OTP: SMTP chưa cấu hình. "
+                            + "Đặt MAIL_USERNAME và MAIL_PASSWORD (Gmail App Password) trong file .env ở thư mục gốc dự án, rồi khởi động lại backend.");
+        }
+
         try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setTo(to);
-            message.setSubject("[Homestay] " + subject);
-            message.setText(
-                "Xin chào,\n\n" +
-                "Mã xác thực của bạn là: " + otp + "\n" +
-                "Mã có hiệu lực trong 10 phút.\n" +
-                "Vui lòng không chia sẻ mã này với ai.\n\n" +
-                "Trân trọng,\nĐội ngũ Homestay"
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, false, "UTF-8");
+            helper.setFrom(from.trim());
+            helper.setTo(to);
+            helper.setSubject("[Homestay] " + subject);
+            helper.setText(
+                    "Xin chào,\n\n"
+                            + "Mã xác thực của bạn là: " + otp + "\n"
+                            + "Mã có hiệu lực trong 10 phút.\n"
+                            + "Vui lòng không chia sẻ mã này với ai.\n\n"
+                            + "Trân trọng,\nĐội ngũ Homestay",
+                    false
             );
             mailSender.send(message);
+            log.info("OTP email sent to {}", to);
         } catch (Exception e) {
-            System.err.println("[AuthService] Gửi email thất bại: " + e.getMessage());
-            System.err.println("[DEBUG] OTP: " + otp); // Chỉ dùng khi dev
+            log.error("Failed to send OTP email to {}: {}", to, e.getMessage());
+            throw new BusinessException(
+                    "Không gửi được email OTP. Kiểm tra MAIL_USERNAME / MAIL_PASSWORD "
+                            + "(Google cần App Password 16 ký tự) và MAIL_HOST nếu không dùng Gmail/Workspace.");
         }
+    }
+
+    private String resolveMailFrom() {
+        if (StringUtils.hasText(mailFrom) && !"no-reply@dev.local".equalsIgnoreCase(mailFrom.trim())) {
+            return mailFrom.trim();
+        }
+        if (mailSender instanceof org.springframework.mail.javamail.JavaMailSenderImpl impl
+                && StringUtils.hasText(impl.getUsername())) {
+            return impl.getUsername().trim();
+        }
+        return mailFrom;
     }
 }
