@@ -25,14 +25,14 @@ import java.util.UUID;
 @NoArgsConstructor
 public class Payment {
 
-    // Loại thanh toán: đặt cọc 40% hoặc thanh toán phần còn lại 60%
-    public enum Type { DEPOSIT, REMAINING_BALANCE }
+    // Loại thanh toán: đặt cọc 40%, thanh toán phần còn lại 60%, hoặc phí bồi thường
+    public enum Type { DEPOSIT, REMAINING_BALANCE, DAMAGE_FEE }
 
     // Phương thức thanh toán
-    public enum Method { BANK_TRANSFER, CASH, E_WALLET }
+    public enum Method { BANK_TRANSFER, CASH, VNPAY }
 
-    // Trạng thái: PENDING chờ manager duyệt, PAID đã duyệt, FAILED bị từ chối
-    public enum Status { PENDING, PAID, FAILED }
+    // Trạng thái: PENDING chờ manager duyệt, PAID đã duyệt, FAILED bị từ chối, REFUNDED đã hoàn tiền
+    public enum Status { PENDING, PAID, FAILED, REFUNDED }
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -62,6 +62,23 @@ public class Payment {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private Status status = Status.PENDING;
+
+    // --- VNPay Gateway fields ---
+    // Mã giao dịch cổng thanh toán
+    @Column(name = "gateway_transaction_id", length = 100)
+    private String gatewayTransactionId;
+
+    // Mã đơn hàng đối soát (Idempotency Key)
+    @Column(name = "order_ref", length = 100)
+    private String orderRef;
+
+    // Mã lỗi từ VNPay
+    @Column(name = "gateway_response_code", length = 10)
+    private String gatewayResponseCode;
+
+    // Thời gian nhận callback IPN
+    @Column(name = "ipn_received_at")
+    private LocalDateTime ipnReceivedAt;
 
     // Manager nào đã duyệt
     @ManyToOne(fetch = FetchType.LAZY)

@@ -37,6 +37,7 @@ public class PropertyStructureResponse {
         private UUID id;
         private Integer floorNumber;
         private String description;
+        private Integer roomCount;
         private List<RoomNode> rooms;
     }
 

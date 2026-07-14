@@ -38,19 +38,47 @@ public class UserService {
         return UserProfileResponse.fromUser(user);
     }
 
-    // Cập nhật profile
+    // SCR-11 — cập nhật hồ sơ (self-scope)
     @Transactional
     public UserProfileResponse updateMyProfile(UUID userId, UpdateProfileRequest request) {
         User user = findUserById(userId);
 
-        if (request.getFullName() != null && !request.getFullName().isBlank()) {
-            user.setFullName(request.getFullName());
+        if (request.getFullName() != null) {
+            String name = request.getFullName().trim();
+            if (name.isBlank()) {
+                throw new BusinessException("Họ tên không được để trống");
+            }
+            if (name.length() > 200) {
+                throw new BusinessException("Họ tên tối đa 200 ký tự");
+            }
+            user.setFullName(name);
         }
-        if (request.getPhone() != null && !request.getPhone().isBlank()) {
-            user.setPhone(request.getPhone());
+
+        if (request.getPhone() != null) {
+            String phone = request.getPhone().replaceAll("[\\s\\-()]", "");
+            if (phone.isBlank()) {
+                user.setPhone(null);
+            } else {
+                if (!phone.matches("^(\\+84|0)[0-9]{9,10}$")) {
+                    throw new BusinessException("Số điện thoại không hợp lệ");
+                }
+                user.setPhone(phone);
+            }
         }
-        if (request.getAvatarUrl() != null && !request.getAvatarUrl().isBlank()) {
-            user.setAvatarUrl(request.getAvatarUrl());
+
+        if (request.getAvatarUrl() != null) {
+            String url = request.getAvatarUrl().trim();
+            if (url.isBlank()) {
+                user.setAvatarUrl(null);
+            } else {
+                if (url.length() > 512) {
+                    throw new BusinessException("URL avatar tối đa 512 ký tự");
+                }
+                if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                    throw new BusinessException("URL avatar phải bắt đầu bằng http:// hoặc https://");
+                }
+                user.setAvatarUrl(url);
+            }
         }
 
         userRepository.save(user);

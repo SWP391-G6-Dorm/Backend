@@ -35,6 +35,29 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
            "OR LOWER(b.room.roomNumber) LIKE LOWER(CONCAT('%', :search, '%')))")
     Page<Booking> findAllWithFilters(@Param("status") Booking.Status status, @Param("search") String search, Pageable pageable);
 
+    /** SCR-34 — Manager list scoped by assigned properties. */
+    @Query("""
+        SELECT b FROM Booking b
+        JOIN b.room r
+        JOIN b.customer c
+        WHERE r.property.id IN :propertyIds
+          AND (:status IS NULL OR b.status = :status)
+          AND (:search IS NULL OR
+               LOWER(c.fullName) LIKE LOWER(CONCAT('%', :search, '%'))
+               OR LOWER(COALESCE(c.phone, '')) LIKE LOWER(CONCAT('%', :search, '%'))
+               OR LOWER(r.roomNumber) LIKE LOWER(CONCAT('%', :search, '%'))
+               OR LOWER(CAST(b.id AS string)) LIKE LOWER(CONCAT('%', :search, '%')))
+          AND (:checkInFrom IS NULL OR b.checkInDate >= :checkInFrom)
+          AND (:checkInTo IS NULL OR b.checkInDate <= :checkInTo)
+        """)
+    Page<Booking> findForManagerWithFilters(
+            @Param("propertyIds") List<UUID> propertyIds,
+            @Param("status") Booking.Status status,
+            @Param("search") String search,
+            @Param("checkInFrom") LocalDate checkInFrom,
+            @Param("checkInTo") LocalDate checkInTo,
+            Pageable pageable);
+
     @Query("""
         SELECT COUNT(b) FROM Booking b
         WHERE b.customer.id = :customerId
@@ -56,4 +79,57 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
         ORDER BY b.checkInDate ASC
         """)
     List<Booking> findUpcomingByCustomerId(@Param("customerId") UUID customerId, @Param("today") LocalDate today);
+
+    @Query("""
+        SELECT COUNT(b) FROM Booking b
+        JOIN b.room r
+        WHERE r.property.id = :propertyId
+          AND b.checkInDate = :today
+          AND b.status = :status
+        """)
+    long countPendingCheckInsByProperty(
+            @Param("propertyId") UUID propertyId,
+            @Param("today") LocalDate today,
+            @Param("status") Booking.Status status);
+
+    @Query("""
+        SELECT b.status, COUNT(b) FROM Booking b
+        JOIN b.room r
+        WHERE r.property.id = :propertyId
+          AND b.createdAt >= :from
+          AND b.createdAt <= :to
+        GROUP BY b.status
+        """)
+    List<Object[]> countByStatusForPropertyInRange(
+            @Param("propertyId") UUID propertyId,
+            @Param("from") java.time.LocalDateTime from,
+            @Param("to") java.time.LocalDateTime to);
+
+    /** SCR-44 — Occupancy: các booking chiếm phòng overlapping khoảng ngày (đêm-phòng). */
+    @Query("""
+        SELECT b.checkInDate, b.checkOutDate FROM Booking b
+        JOIN b.room r
+        WHERE r.property.id = :propertyId
+          AND b.status IN :statuses
+          AND b.checkInDate < :rangeEndExclusive
+          AND b.checkOutDate > :rangeStart
+        """)
+    List<Object[]> findOccupancyRawData(
+            @Param("propertyId") UUID propertyId,
+            @Param("statuses") List<Booking.Status> statuses,
+            @Param("rangeStart") LocalDate rangeStart,
+            @Param("rangeEndExclusive") LocalDate rangeEndExclusive);
+
+    /** SCR-44 — Booking Trend: thời điểm tạo booking của property trong khoảng. */
+    @Query("""
+        SELECT b.createdAt FROM Booking b
+        JOIN b.room r
+        WHERE r.property.id = :propertyId
+          AND b.createdAt >= :from
+          AND b.createdAt <= :to
+        """)
+    List<java.time.LocalDateTime> findBookingCreationTimes(
+            @Param("propertyId") UUID propertyId,
+            @Param("from") java.time.LocalDateTime from,
+            @Param("to") java.time.LocalDateTime to);
 }

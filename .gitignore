@@ -45,6 +45,9 @@ logs/
 *.log
 *.log.*
 
+# Runtime uploads
+uploads/
+
 # OS files
 .DS_Store
 Thumbs.db

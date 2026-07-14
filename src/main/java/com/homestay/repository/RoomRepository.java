@@ -19,6 +19,10 @@ public interface RoomRepository extends JpaRepository<Room, UUID>, JpaSpecificat
     // Tìm phòng theo property
     Page<Room> findByPropertyId(UUID propertyId, Pageable pageable);
 
+    long countByPropertyId(UUID propertyId);
+
+    long countByPropertyIdAndStatus(UUID propertyId, Room.Status status);
+
     // Tìm phòng theo floor
     List<Room> findByFloorId(UUID floorId);
 
@@ -56,6 +60,19 @@ public interface RoomRepository extends JpaRepository<Room, UUID>, JpaSpecificat
         ORDER BY b.checkInDate
     """)
     List<Object[]> findBookedDateRanges(@Param("roomId") UUID roomId);
+
+    // SCR-09: blocking bookings overlapping a date window
+    @Query("""
+        SELECT b.checkInDate, b.checkOutDate, b.status FROM Booking b
+        WHERE b.room.id = :roomId
+        AND b.status IN ('PENDING_DEPOSIT', 'CONFIRMED', 'CHECKED_IN', 'PENDING_INSPECTION', 'PENDING_DAMAGE_PAYMENT')
+        AND b.checkInDate <= :endDate
+        AND b.checkOutDate > :startDate
+        ORDER BY b.checkInDate
+    """)
+    List<Object[]> findBlockingBookingsInRange(@Param("roomId") UUID roomId,
+                                               @Param("startDate") LocalDate startDate,
+                                               @Param("endDate") LocalDate endDate);
 
     // Public listing filter — SCR-07/SCR-09 (keyword: tên/địa chỉ homestay, số phòng, loại phòng)
     @Query("""
@@ -109,6 +126,26 @@ public interface RoomRepository extends JpaRepository<Room, UUID>, JpaSpecificat
             @Param("propertyId") UUID propertyId,
             @Param("floorId")    UUID floorId,
             @Param("roomType")   String roomType,
+            Pageable pageable
+    );
+
+    // SCR-29: Manager list scoped to assigned properties
+    @Query("""
+        SELECT r FROM Room r
+        WHERE (:search IS NULL OR
+               LOWER(r.roomNumber) LIKE LOWER(CONCAT('%', :search, '%')) OR
+               LOWER(r.roomType)   LIKE LOWER(CONCAT('%', :search, '%')))
+        AND (:status IS NULL OR r.status = :status)
+        AND r.property.id IN :propertyIds
+        AND (:floorId IS NULL OR r.floor.id = :floorId)
+        AND (:roomType IS NULL OR LOWER(r.roomType) = LOWER(:roomType))
+        """)
+    Page<Room> findWithFiltersInProperties(
+            @Param("search")      String search,
+            @Param("status")      Room.Status status,
+            @Param("propertyIds") List<UUID> propertyIds,
+            @Param("floorId")     UUID floorId,
+            @Param("roomType")    String roomType,
             Pageable pageable
     );
 

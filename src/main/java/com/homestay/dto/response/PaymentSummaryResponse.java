@@ -18,6 +18,7 @@ public class PaymentSummaryResponse {
     private Payment.Method method;
     private BigDecimal amount;
     private Payment.Status status;
+    private LocalDateTime paidAt;
     private LocalDateTime createdAt;
 
     public static PaymentSummaryResponse fromEntity(Payment payment) {
@@ -29,6 +30,7 @@ public class PaymentSummaryResponse {
                 .method(payment.getMethod())
                 .amount(payment.getAmount())
                 .status(payment.getStatus())
+                .paidAt(payment.getPaidAt())
                 .createdAt(payment.getCreatedAt())
                 .build();
     }

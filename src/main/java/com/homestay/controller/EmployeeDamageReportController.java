@@ -1,0 +1,50 @@
+package com.homestay.controller;
+
+import com.homestay.dto.request.CreateEmployeeDamageReportRequest;
+import com.homestay.dto.response.ApiResponse;
+import com.homestay.dto.response.EmployeeDamageReportResponse;
+import com.homestay.dto.response.PageResponse;
+import com.homestay.entity.User;
+import com.homestay.service.EmployeeDamageReportService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+/** SCR-63 GET + SCR-64 POST. Resource /api/v1/employees/damage-reports. */
+@RestController
+@RequestMapping("/api/v1/employees/damage-reports")
+@PreAuthorize("hasRole('EMPLOYEE')")
+@RequiredArgsConstructor
+public class EmployeeDamageReportController {
+
+    private final EmployeeDamageReportService employeeDamageReportService;
+
+    @GetMapping
+    public ResponseEntity<ApiResponse<PageResponse<EmployeeDamageReportResponse>>> list(
+            @AuthenticationPrincipal User currentUser,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "15") int size) {
+        PageResponse<EmployeeDamageReportResponse> data =
+                employeeDamageReportService.list(currentUser, PageRequest.of(page, size));
+        return ResponseEntity.ok(ApiResponse.ok(data));
+    }
+
+    @PostMapping
+    public ResponseEntity<ApiResponse<EmployeeDamageReportResponse>> create(
+            @AuthenticationPrincipal User currentUser,
+            @Valid @RequestBody CreateEmployeeDamageReportRequest request) {
+        EmployeeDamageReportResponse data = employeeDamageReportService.create(currentUser, request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok("Da tao bao cao hu hai", data));
+    }
+}

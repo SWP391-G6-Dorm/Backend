@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Data
 public class CreateRoomRequest {
@@ -34,4 +35,6 @@ public class CreateRoomRequest {
     private BigDecimal area;
 
     private String description;
+
+    private List<String> amenities;
 }

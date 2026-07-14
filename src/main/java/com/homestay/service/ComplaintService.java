@@ -60,7 +60,7 @@ public class ComplaintService {
                 .map(c -> ComplaintSummaryResponse.builder()
                         .id(c.getId())
                         .subject(c.getSubject())
-                        .customerName(c.getCustomer() != null ? c.getCustomer().getFullName() : "Khách vãng lai")
+                        .customerName(c.getUser() != null ? c.getUser().getFullName() : "Khách vãng lai")
                         .status(c.getStatus().name())
                         .createdAt(c.getCreatedAt())
                         .build())
@@ -81,11 +81,11 @@ public class ComplaintService {
                 .orElseThrow(() -> new ResourceNotFoundException("Khiếu nại không tồn tại"));
 
         ComplaintDetailResponse.CustomerInfo customerInfo = null;
-        if (c.getCustomer() != null) {
+        if (c.getUser() != null) {
             customerInfo = ComplaintDetailResponse.CustomerInfo.builder()
-                    .id(c.getCustomer().getId())
-                    .fullName(c.getCustomer().getFullName())
-                    .email(c.getCustomer().getEmail())
+                    .id(c.getUser().getId())
+                    .fullName(c.getUser().getFullName())
+                    .email(c.getUser().getEmail())
                     .build();
         }
 
@@ -137,11 +137,11 @@ public class ComplaintService {
         c = complaintRepository.save(c);
 
         ComplaintDetailResponse.CustomerInfo customerInfo = null;
-        if (c.getCustomer() != null) {
+        if (c.getUser() != null) {
             customerInfo = ComplaintDetailResponse.CustomerInfo.builder()
-                    .id(c.getCustomer().getId())
-                    .fullName(c.getCustomer().getFullName())
-                    .email(c.getCustomer().getEmail())
+                    .id(c.getUser().getId())
+                    .fullName(c.getUser().getFullName())
+                    .email(c.getUser().getEmail())
                     .build();
         }
 
@@ -161,7 +161,7 @@ public class ComplaintService {
     @Transactional(readOnly = true)
     public java.util.List<ComplaintDetailResponse> getMyComplaints(UUID customerId) {
         java.util.List<Complaint> complaints = complaintRepository.findAll().stream()
-                .filter(c -> c.getCustomer() != null && c.getCustomer().getId().equals(customerId))
+                .filter(c -> c.getUser() != null && c.getUser().getId().equals(customerId))
                 .sorted((a, b) -> {
                     if (a.getCreatedAt() == null || b.getCreatedAt() == null) return 0;
                     return b.getCreatedAt().compareTo(a.getCreatedAt());
@@ -170,9 +170,9 @@ public class ComplaintService {
 
         return complaints.stream().map(c -> {
             ComplaintDetailResponse.CustomerInfo customerInfo = ComplaintDetailResponse.CustomerInfo.builder()
-                    .id(c.getCustomer().getId())
-                    .fullName(c.getCustomer().getFullName())
-                    .email(c.getCustomer().getEmail())
+                    .id(c.getUser().getId())
+                    .fullName(c.getUser().getFullName())
+                    .email(c.getUser().getEmail())
                     .build();
 
             return ComplaintDetailResponse.builder()
@@ -192,7 +192,7 @@ public class ComplaintService {
     @Transactional
     public ComplaintDetailResponse submitComplaint(com.homestay.dto.request.CreateComplaintRequest request, com.homestay.entity.User currentUser) {
         Complaint c = new Complaint();
-        c.setCustomer(currentUser);
+        c.setUser(currentUser);
         c.setSubject(request.getSubject().trim());
         c.setDescription(request.getDescription().trim());
         c.setStatus(Complaint.Status.OPEN);

@@ -6,6 +6,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -26,6 +27,7 @@ public class RoomDetailResponse {
     private Integer capacity;
     private BigDecimal area;
     private String description;
+    private List<String> amenities;
     private String status;
     private List<RoomImageInfo> images;
     private double averageRating;
@@ -64,6 +66,9 @@ public class RoomDetailResponse {
         res.setCapacity(room.getCapacity());
         res.setArea(room.getArea());
         res.setDescription(room.getDescription());
+        res.setAmenities(room.getAmenities() != null
+                ? room.getAmenities()
+                : Collections.emptyList());
         res.setStatus(room.getStatus().name());
         res.setCreatedAt(room.getCreatedAt());
 

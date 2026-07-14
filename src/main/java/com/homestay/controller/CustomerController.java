@@ -21,7 +21,7 @@ public class CustomerController {
         this.customerDashboardService = customerDashboardService;
     }
 
-    /** SCR-16 — Customer Dashboard summary */
+    /** SCR-15 — Customer Dashboard summary (legacy) */
     @GetMapping("/dashboard")
     @PreAuthorize("hasRole('CUSTOMER')")
     public ResponseEntity<ApiResponse<CustomerDashboardResponse>> getDashboard(

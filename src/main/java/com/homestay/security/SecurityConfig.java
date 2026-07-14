@@ -45,6 +45,7 @@ public class SecurityConfig {
             .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
+
             .authorizeHttpRequests(auth -> auth
                 // Auth endpoints - ai cũng gọi được
                 .requestMatchers(HttpMethod.POST,
@@ -55,7 +56,15 @@ public class SecurityConfig {
                     "/api/auth/google",
                     "/api/auth/refresh",
                     "/api/auth/forgot-password",
-                    "/api/auth/reset-password"
+                    "/api/auth/reset-password",
+                    "/api/v1/auth/**"
+                ).permitAll()
+
+                // SCR-01 landing, SCR-07 search, SCR-08 room detail — public read (api-spec v1)
+                .requestMatchers(HttpMethod.GET,
+                    "/api/v1/promotions/active",
+                    "/api/v1/properties/featured",
+                    "/api/v1/rooms/**"
                 ).permitAll()
 
                 // Xem danh sách phòng và chi tiết - không cần đăng nhập
@@ -64,7 +73,8 @@ public class SecurityConfig {
                     "/api/rooms/**",
                     "/api/properties",
                     "/api/properties/**",
-                    "/api/public/**"
+                    "/api/public/**",
+                    "/api/payments/vnpay/return"
                 ).permitAll()
 
                 // Swagger docs (dev only)

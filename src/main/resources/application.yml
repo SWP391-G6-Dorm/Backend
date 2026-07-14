@@ -1,4 +1,6 @@
 spring:
+  config:
+    import: optional:file:.env
   application:
     name: homestay-backend
 
@@ -24,20 +26,6 @@ spring:
       max-file-size: 10MB
       max-request-size: 30MB
 
-  # Google OAuth2 - client-id lấy từ .env
-  security:
-    oauth2:
-      client:
-        registration:
-          google:
-            # Fallback rỗng nếu không set .env (Google login sẽ không hoạt động)
-            client-id: ${GOOGLE_CLIENT_ID:dev-google-client-id}
-            client-secret: ${GOOGLE_CLIENT_SECRET:}
-            scope: email,profile
-  # Tắt auto-config OAuth2 để tránh lỗi thiếu client-secret khi chỉ verify token phía server
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration
 
   # Cấu hình gửi email
   mail:
@@ -79,3 +67,9 @@ app:
   # Tự động thêm dữ liệu demo khi khởi động (dev)
   seed:
     enabled: true
+
+vnpay:
+  tmnCode: ${VNPAY_TMN_CODE:YQ23CU6W}
+  hashSecret: ${VNPAY_HASH_SECRET:PSSN8ARRWUX199ZDTDY4Z6UTK1GCDOZB}
+  url: ${VNPAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+  returnUrl: ${VNPAY_RETURN_URL:http://localhost:8080/api/payments/vnpay/return}
