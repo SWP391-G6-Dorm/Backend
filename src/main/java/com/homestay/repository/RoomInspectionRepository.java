@@ -87,11 +87,11 @@ public interface RoomInspectionRepository extends JpaRepository<RoomInspection, 
             @Param("propertyIds") Collection<UUID> propertyIds);
 
     // SCR-64: resolve inspection FAILED for a room + employee (most recent first).
-    // Enum value truyen qua @Param de tranh HQL semantic error voi FQCN.
     @Query("""
             SELECT ri FROM RoomInspection ri
             JOIN FETCH ri.booking b
             JOIN FETCH ri.property p
+            JOIN FETCH ri.room r
             WHERE ri.room.id = :roomId
               AND ri.inspectedBy.id = :employeeId
               AND ri.status = :status
@@ -102,4 +102,35 @@ public interface RoomInspectionRepository extends JpaRepository<RoomInspection, 
             @Param("employeeId") UUID employeeId,
             @Param("status") RoomInspection.Status status,
             Pageable pageable);
+
+    /** SCR-64 — FAILED inspections by employee that do not yet have a damage report. */
+    @Query("""
+            SELECT ri FROM RoomInspection ri
+            JOIN FETCH ri.room r
+            JOIN FETCH ri.booking b
+            WHERE ri.inspectedBy.id = :employeeId
+              AND ri.status = :status
+              AND NOT EXISTS (
+                  SELECT 1 FROM DamageReport dr WHERE dr.inspection.id = ri.id
+              )
+            ORDER BY ri.inspectedAt DESC
+            """)
+    List<RoomInspection> findEligibleForDamageReport(
+            @Param("employeeId") UUID employeeId,
+            @Param("status") RoomInspection.Status status);
+
+    /** SCR-64 — Load specific FAILED inspection owned by employee (for create by inspectionId). */
+    @Query("""
+            SELECT ri FROM RoomInspection ri
+            JOIN FETCH ri.booking b
+            JOIN FETCH ri.property p
+            JOIN FETCH ri.room r
+            WHERE ri.id = :id
+              AND ri.inspectedBy.id = :employeeId
+              AND ri.status = :status
+            """)
+    Optional<RoomInspection> findFailedByIdForEmployee(
+            @Param("id") UUID id,
+            @Param("employeeId") UUID employeeId,
+            @Param("status") RoomInspection.Status status);
 }
