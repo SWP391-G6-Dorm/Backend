@@ -9,7 +9,7 @@ import lombok.Setter;
 @Setter
 public class UpdateMaintenanceStatusRequest {
 
-    @NotNull(message = "Status is required")
+    @NotNull(message = "Trạng thái là bắt buộc")
     private MaintenanceTicket.Status status;
 
     private String resolutionNote;
