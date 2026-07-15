@@ -6,6 +6,7 @@ import com.homestay.entity.User;
 import com.homestay.service.MaintenanceTicketService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -25,6 +26,7 @@ public class MaintenanceTicketController {
 
     // ── Customer: List tickets (paginated, with optional status filter) ──
     @GetMapping("/api/maintenance-tickets")
+    @PreAuthorize("hasRole('CUSTOMER')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getCustomerTickets(
             @AuthenticationPrincipal User currentUser,
             @RequestParam(defaultValue = "ALL") String status,
@@ -36,6 +38,7 @@ public class MaintenanceTicketController {
 
     // ── Customer: Create ticket (multipart/form-data) ──
     @PostMapping("/api/maintenance-tickets")
+    @PreAuthorize("hasRole('CUSTOMER')")
     public ResponseEntity<ApiResponse<Object>> createTicket(
             @AuthenticationPrincipal User currentUser,
             @RequestParam("roomId") UUID roomId,
@@ -79,6 +82,7 @@ public class MaintenanceTicketController {
 
     // ── Manager: Get all tickets (paginated) ──
     @GetMapping("/api/maintenance-tickets/all")
+    @PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<ApiResponse<Object>> getAllTickets(
             @RequestParam(defaultValue = "ALL") String status,
             @RequestParam(defaultValue = "0") int page,
@@ -89,6 +93,7 @@ public class MaintenanceTicketController {
 
     // ── Manager: Update ticket status ──
     @PutMapping("/api/maintenance-tickets/{id}/status")
+    @PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<ApiResponse<Object>> updateTicketStatus(
             @PathVariable UUID id,
             @Valid @RequestBody UpdateMaintenanceStatusRequest request) {
@@ -96,8 +101,9 @@ public class MaintenanceTicketController {
         return ResponseEntity.ok(ApiResponse.ok("Status updated successfully", ticket));
     }
 
-    // ── Customer: Get active bookings for dropdown ──
+    // ── Customer: Get active bookings for dropdown (SCR-23) ──
     @GetMapping("/api/bookings/my-active")
+    @PreAuthorize("hasRole('CUSTOMER')")
     public ResponseEntity<ApiResponse<Object>> getMyActiveBookings(
             @AuthenticationPrincipal User currentUser) {
         Object bookings = ticketService.getActiveBookingsForCustomer(currentUser.getId());

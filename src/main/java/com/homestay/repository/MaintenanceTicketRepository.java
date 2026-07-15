@@ -18,6 +18,23 @@ public interface MaintenanceTicketRepository extends JpaRepository<MaintenanceTi
     List<MaintenanceTicket> findByCustomerOrderByCreatedAtDesc(User customer);
     List<MaintenanceTicket> findAllByOrderByCreatedAtDesc();
 
+    /** SCR-22 — Customer ticket list with DB pagination and optional status filter. */
+    @Query(value = """
+            SELECT m FROM MaintenanceTicket m
+            WHERE m.customer = :customer
+              AND (:status IS NULL OR m.status = :status)
+            ORDER BY m.createdAt DESC
+            """,
+            countQuery = """
+            SELECT COUNT(m) FROM MaintenanceTicket m
+            WHERE m.customer = :customer
+              AND (:status IS NULL OR m.status = :status)
+            """)
+    Page<MaintenanceTicket> findByCustomerPaged(
+            @Param("customer") User customer,
+            @Param("status") MaintenanceTicket.Status status,
+            Pageable pageable);
+
     long countByCustomerIdAndStatusIn(UUID customerId, java.util.Collection<MaintenanceTicket.Status> statuses);
 
     @Query("""
