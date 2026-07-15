@@ -43,11 +43,16 @@ public class DotEnvEnvironmentPostProcessor implements EnvironmentPostProcessor 
 
     private static Path resolveEnvFile() {
         Path cwd = Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize();
-        Path[] candidates = {
-                cwd.resolve(".env"),
-                cwd.resolve("backend").resolve(".env"),
-                cwd.getParent() != null ? cwd.getParent().resolve(".env") : null
-        };
+        // IDE often starts with cwd = workspace root (D:/SWP391_G6) while .env lives under SWP391_G6/
+        java.util.LinkedHashSet<Path> candidates = new java.util.LinkedHashSet<>();
+        Path dir = cwd;
+        for (int i = 0; i < 5 && dir != null; i++) {
+            candidates.add(dir.resolve(".env"));
+            candidates.add(dir.resolve("backend").resolve(".env"));
+            candidates.add(dir.resolve("SWP391_G6").resolve(".env"));
+            candidates.add(dir.resolve("SWP391_G6").resolve("backend").resolve(".env"));
+            dir = dir.getParent();
+        }
         for (Path candidate : candidates) {
             if (candidate != null && Files.isRegularFile(candidate)) {
                 return candidate;

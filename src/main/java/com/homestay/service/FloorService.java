@@ -8,7 +8,7 @@ import com.homestay.entity.Floor;
 import com.homestay.entity.Property;
 import com.homestay.entity.Room;
 import com.homestay.entity.User;
-import com.homestay.exception.BusinessException;
+import com.homestay.exception.ConflictException;
 import com.homestay.exception.ResourceNotFoundException;
 import com.homestay.repository.FloorRepository;
 import com.homestay.repository.PropertyRepository;
@@ -84,7 +84,7 @@ public class FloorService {
         Property property = findPropertyById(propertyId);
 
         if (floorRepository.existsByPropertyAndFloorNumber(property, request.getFloorNumber())) {
-            throw new BusinessException("Tầng " + request.getFloorNumber() + " đã tồn tại trong property này");
+            throw new ConflictException("Tầng " + request.getFloorNumber() + " đã tồn tại trong property này");
         }
 
         Floor floor = new Floor();
@@ -103,7 +103,7 @@ public class FloorService {
         if (request.getFloorNumber() != null
                 && !request.getFloorNumber().equals(floor.getFloorNumber())
                 && floorRepository.existsByPropertyAndFloorNumber(floor.getProperty(), request.getFloorNumber())) {
-            throw new BusinessException("Tầng " + request.getFloorNumber() + " đã tồn tại trong property này");
+            throw new ConflictException("Tầng " + request.getFloorNumber() + " đã tồn tại trong property này");
         }
 
         if (request.getFloorNumber() != null) {
@@ -122,7 +122,7 @@ public class FloorService {
         Floor floor = findFloorById(floorId);
 
         if (floor.getRooms() != null && !floor.getRooms().isEmpty()) {
-            throw new BusinessException("Không thể xóa tầng đang có phòng. Vui lòng xóa phòng trước.");
+            throw new ConflictException("Không thể xóa tầng đang có phòng. Vui lòng xóa phòng trước.");
         }
 
         floorRepository.delete(floor);
