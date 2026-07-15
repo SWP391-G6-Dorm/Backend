@@ -674,11 +674,14 @@ public class BookingService {
         booking.setDepositAmount(depositAmount);
         booking.setRemainingAmount(remainingAmount);
         booking.setStatus(Booking.Status.PENDING_DEPOSIT);
+        // Hold window 30 minutes (configurable later via SystemSetting)
+        booking.setHoldExpiresAt(java.time.LocalDateTime.now().plusMinutes(30));
 
         booking = bookingRepository.save(booking);
 
         // Giữ phòng ở trạng thái chờ cọc để tránh double-booking
         room.setStatus(Room.Status.PENDING_DEPOSIT);
+        roomRepository.save(room);
 
         return BookingDetailResponse.fromEntity(booking);
     }
