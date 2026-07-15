@@ -4,6 +4,7 @@ import com.homestay.entity.Booking;
 import com.homestay.entity.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -51,6 +52,26 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     Page<Booking> findByRoomIdOrderByCheckInDateDesc(UUID roomId, Pageable pageable);
 
     long countByCustomerId(UUID customerId);
+
+    /** SCR-51 — Batch count bookings per customer (Admin Directory). */
+    @Query("""
+            SELECT b.customer.id, COUNT(b)
+            FROM Booking b
+            WHERE b.customer.id IN :customerIds
+            GROUP BY b.customer.id
+            """)
+    List<Object[]> countBookingsByCustomerIds(@Param("customerIds") List<UUID> customerIds);
+
+    /** SCR-51 — Recent bookings for Customer Directory drawer. */
+    @EntityGraph(attributePaths = {"room", "room.property"})
+    @Query("""
+            SELECT b FROM Booking b
+            WHERE b.customer.id = :customerId
+            ORDER BY b.createdAt DESC
+            """)
+    Page<Booking> findByCustomerIdWithDetails(
+            @Param("customerId") UUID customerId,
+            Pageable pageable);
 
     @org.springframework.data.jpa.repository.Query("SELECT b FROM Booking b WHERE " +
            "(:status IS NULL OR b.status = :status) AND " +
