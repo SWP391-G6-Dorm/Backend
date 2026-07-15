@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
-/** SCR-61 - Employee maintenance ticket list item. */
+/** SCR-61 — Employee maintenance ticket list item. */
 @Data
 @Builder
 @NoArgsConstructor
@@ -18,9 +18,11 @@ public class EmployeeMaintenanceTicketResponse {
 
     private String id;
     private String roomName;
+    /** Ticket title (free text) — not a category enum. */
     private String issueType;
     private String description;
     private String status;
+    private String resolutionNote;
     private LocalDateTime assignedAt;
     private LocalDateTime resolvedAt;
 
@@ -43,6 +45,7 @@ public class EmployeeMaintenanceTicketResponse {
                 .issueType(ticket.getTitle())
                 .description(ticket.getDescription() != null ? ticket.getDescription() : "")
                 .status(ticket.getStatus().name())
+                .resolutionNote(ticket.getResolutionNote())
                 .assignedAt(assignedAt)
                 .resolvedAt(resolvedAt)
                 .build();

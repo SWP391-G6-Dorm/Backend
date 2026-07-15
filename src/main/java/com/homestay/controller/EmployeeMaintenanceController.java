@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
-/** SCR-61 - Employee Maintenance Workspace. Resource /api/v1/employees/maintenance. */
+/** SCR-61 — Employee Maintenance Workspace. Resource /api/v1/employees/maintenance. */
 @RestController
 @RequestMapping("/api/v1/employees/maintenance")
 @PreAuthorize("hasRole('EMPLOYEE')")
@@ -37,17 +37,20 @@ public class EmployeeMaintenanceController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size,
             @RequestParam(required = false) String status) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), 100);
         PageResponse<EmployeeMaintenanceTicketResponse> data =
-                employeeMaintenanceService.list(currentUser, status, PageRequest.of(page, size));
+                employeeMaintenanceService.list(currentUser, status, PageRequest.of(safePage, safeSize));
         return ResponseEntity.ok(ApiResponse.ok(data));
     }
 
     @PutMapping("/{id}/status")
-    public ResponseEntity<ApiResponse<Void>> updateStatus(
+    public ResponseEntity<ApiResponse<EmployeeMaintenanceTicketResponse>> updateStatus(
             @AuthenticationPrincipal User currentUser,
             @PathVariable UUID id,
             @Valid @RequestBody UpdateMaintenanceStatusRequest request) {
-        employeeMaintenanceService.updateStatus(currentUser, id, request);
-        return ResponseEntity.ok(ApiResponse.ok("Cap nhat trang thai"));
+        EmployeeMaintenanceTicketResponse data =
+                employeeMaintenanceService.updateStatus(currentUser, id, request);
+        return ResponseEntity.ok(ApiResponse.ok("Cập nhật trạng thái thành công", data));
     }
 }

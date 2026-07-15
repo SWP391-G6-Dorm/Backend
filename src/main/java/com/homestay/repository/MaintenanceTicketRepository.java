@@ -4,6 +4,7 @@ import com.homestay.entity.MaintenanceTicket;
 import com.homestay.entity.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -60,12 +61,11 @@ public interface MaintenanceTicketRepository extends JpaRepository<MaintenanceTi
             UUID employeeId,
             java.util.Collection<MaintenanceTicket.Status> statuses);
 
-    // SCR-61: employee maintenance workspace
+    // SCR-61: employee maintenance workspace — EntityGraph thay JOIN FETCH để pagination đúng.
+    @EntityGraph(attributePaths = {"room", "room.floor"})
     @Query(
             value = """
             SELECT m FROM MaintenanceTicket m
-            JOIN FETCH m.room r
-            LEFT JOIN FETCH r.floor
             WHERE m.assignedEmployee.id = :employeeId
               AND (:status IS NULL OR m.status = :status)
             ORDER BY m.createdAt DESC
@@ -80,10 +80,10 @@ public interface MaintenanceTicketRepository extends JpaRepository<MaintenanceTi
             @Param("status") MaintenanceTicket.Status status,
             Pageable pageable);
 
+    /** SCR-61 — Load assigned ticket with room for status update. */
+    @EntityGraph(attributePaths = {"room", "room.floor"})
     @Query("""
             SELECT m FROM MaintenanceTicket m
-            JOIN FETCH m.room r
-            LEFT JOIN FETCH r.floor
             WHERE m.id = :id
               AND m.assignedEmployee.id = :employeeId
             """)
