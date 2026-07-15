@@ -63,9 +63,10 @@ public class ReviewService {
         review = reviewRepository.save(review);
 
         // Re-fetch with EntityGraph so MyReviewResponse can safely read room/property/images
-        return reviewRepository.findByIdAndCustomer_Id(review.getId(), currentUser.getId())
+        Review saved = review;
+        return reviewRepository.findByIdAndCustomer_Id(saved.getId(), currentUser.getId())
                 .map(MyReviewResponse::fromEntity)
-                .orElseGet(() -> MyReviewResponse.fromEntity(review));
+                .orElseGet(() -> MyReviewResponse.fromEntity(saved));
     }
 
     @Transactional(readOnly = true)
@@ -101,9 +102,10 @@ public class ReviewService {
         review.setComment(comment);
 
         review = reviewRepository.save(review);
-        return reviewRepository.findByIdAndCustomer_Id(review.getId(), currentUser.getId())
+        Review saved = review;
+        return reviewRepository.findByIdAndCustomer_Id(saved.getId(), currentUser.getId())
                 .map(MyReviewResponse::fromEntity)
-                .orElseGet(() -> MyReviewResponse.fromEntity(review));
+                .orElseGet(() -> MyReviewResponse.fromEntity(saved));
     }
 
     @Transactional

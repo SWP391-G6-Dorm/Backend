@@ -11,7 +11,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
-/** SCR-63 - Employee damage report list item. */
+/** SCR-63 — Employee damage report list item. */
 @Data
 @Builder
 @NoArgsConstructor
@@ -22,7 +22,10 @@ public class EmployeeDamageReportResponse {
     private String roomName;
     private String status;
     private List<Item> items;
+    private int itemCount;
     private BigDecimal totalCost;
+    private Boolean requiresAdminEscalation;
+    private String note;
     private LocalDateTime createdAt;
 
     @Data
@@ -54,9 +57,12 @@ public class EmployeeDamageReportResponse {
         return EmployeeDamageReportResponse.builder()
                 .id(dr.getId().toString())
                 .roomName(roomName)
-                .status(dr.getStatus().name())
+                .status(dr.getStatus() != null ? dr.getStatus().name() : null)
                 .items(items)
+                .itemCount(items.size())
                 .totalCost(totalCost)
+                .requiresAdminEscalation(Boolean.TRUE.equals(dr.getRequiresAdminEscalation()))
+                .note(dr.getNote())
                 .createdAt(dr.getCreatedAt())
                 .build();
     }
