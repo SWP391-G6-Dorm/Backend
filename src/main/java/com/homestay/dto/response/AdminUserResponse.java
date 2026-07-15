@@ -29,7 +29,25 @@ public class AdminUserResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+    /** SCR-50 — Số property ACTIVE được gán (null nếu không phải Manager). */
+    private Integer propertiesAssigned;
+
+    /** SCR-51 — Tổng đơn đặt phòng (null nếu không phải Customer). */
+    private Long totalBookings;
+
+    /** SCR-51 — Tổng chi tiêu PAID (null nếu không phải Customer). */
+    private java.math.BigDecimal totalSpend;
+
     public static AdminUserResponse fromEntity(User u) {
+        return fromEntity(u, null, null, null);
+    }
+
+    public static AdminUserResponse fromEntity(User u, Integer propertiesAssigned) {
+        return fromEntity(u, propertiesAssigned, null, null);
+    }
+
+    public static AdminUserResponse fromEntity(
+            User u, Integer propertiesAssigned, Long totalBookings, java.math.BigDecimal totalSpend) {
         return AdminUserResponse.builder()
                 .id(u.getId())
                 .fullName(u.getFullName())
@@ -40,6 +58,9 @@ public class AdminUserResponse {
                 .avatarUrl(u.getAvatarUrl())
                 .createdAt(u.getCreatedAt())
                 .updatedAt(u.getUpdatedAt())
+                .propertiesAssigned(propertiesAssigned)
+                .totalBookings(totalBookings)
+                .totalSpend(totalSpend)
                 .build();
     }
 }

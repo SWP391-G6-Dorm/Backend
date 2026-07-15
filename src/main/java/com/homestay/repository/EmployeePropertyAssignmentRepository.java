@@ -4,6 +4,7 @@ import com.homestay.entity.EmployeePropertyAssignment;
 import com.homestay.entity.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -31,6 +32,8 @@ public interface EmployeePropertyAssignmentRepository extends JpaRepository<Empl
             UUID propertyId,
             EmployeePropertyAssignment.Status status);
 
+    /** SCR-39 — Eager-load employee + property for list mapping (avoid LazyInitializationException). */
+    @EntityGraph(attributePaths = {"employee", "property"})
     @Query("""
             SELECT epa FROM EmployeePropertyAssignment epa
             JOIN epa.employee e
@@ -50,6 +53,13 @@ public interface EmployeePropertyAssignmentRepository extends JpaRepository<Empl
 
     Optional<EmployeePropertyAssignment> findFirstByEmployee_IdAndStatus(
             UUID employeeId,
+            EmployeePropertyAssignment.Status status);
+
+    /** SCR-39 — Scope update/status to employee at a specific property. */
+    @EntityGraph(attributePaths = {"employee", "property"})
+    Optional<EmployeePropertyAssignment> findByEmployee_IdAndProperty_IdAndStatus(
+            UUID employeeId,
+            UUID propertyId,
             EmployeePropertyAssignment.Status status);
 
     // SCR-59: all ACTIVE property assignments for employee KPI scope

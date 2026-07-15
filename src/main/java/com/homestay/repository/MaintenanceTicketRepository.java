@@ -19,6 +19,23 @@ public interface MaintenanceTicketRepository extends JpaRepository<MaintenanceTi
     List<MaintenanceTicket> findByCustomerOrderByCreatedAtDesc(User customer);
     List<MaintenanceTicket> findAllByOrderByCreatedAtDesc();
 
+    /** SCR-22 — Customer ticket list with DB pagination and optional status filter. */
+    @Query(value = """
+            SELECT m FROM MaintenanceTicket m
+            WHERE m.customer = :customer
+              AND (:status IS NULL OR m.status = :status)
+            ORDER BY m.createdAt DESC
+            """,
+            countQuery = """
+            SELECT COUNT(m) FROM MaintenanceTicket m
+            WHERE m.customer = :customer
+              AND (:status IS NULL OR m.status = :status)
+            """)
+    Page<MaintenanceTicket> findByCustomerPaged(
+            @Param("customer") User customer,
+            @Param("status") MaintenanceTicket.Status status,
+            Pageable pageable);
+
     long countByCustomerIdAndStatusIn(UUID customerId, java.util.Collection<MaintenanceTicket.Status> statuses);
 
     @Query("""
@@ -29,15 +46,11 @@ public interface MaintenanceTicketRepository extends JpaRepository<MaintenanceTi
         """)
     long countOpenByPropertyId(@Param("propertyId") UUID propertyId);
 
-    // SCR-41: Danh sach bao tri cho Manager, scope theo property, filter status + search title.
-    // JOIN FETCH cac quan he single-valued de tranh N+1; enum truyen qua parameter.
+    // SCR-41: Danh sách bảo trì Manager — EntityGraph thay JOIN FETCH để pagination đúng trên DB.
+    @EntityGraph(attributePaths = {"room", "room.property", "customer", "assignedEmployee"})
     @Query(value = """
             SELECT m FROM MaintenanceTicket m
-            JOIN FETCH m.room r
-            JOIN FETCH r.property p
-            JOIN FETCH m.customer c
-            LEFT JOIN FETCH m.assignedEmployee ae
-            WHERE p.id = :propertyId
+            WHERE m.room.property.id = :propertyId
               AND (:status IS NULL OR m.status = :status)
               AND (:search IS NULL OR :search = '' OR
                    LOWER(m.title) LIKE LOWER(CONCAT('%', :search, '%')))
@@ -55,6 +68,11 @@ public interface MaintenanceTicketRepository extends JpaRepository<MaintenanceTi
             @Param("status") MaintenanceTicket.Status status,
             @Param("search") String search,
             Pageable pageable);
+
+    /** SCR-41 — Load ticket + room/property/customer/assignee for assign & verify-close. */
+    @EntityGraph(attributePaths = {"room", "room.property", "customer", "assignedEmployee"})
+    @Query("SELECT m FROM MaintenanceTicket m WHERE m.id = :id")
+    Optional<MaintenanceTicket> findByIdWithDetails(@Param("id") UUID id);
 
     // SCR-59: pending maintenance for employee dashboard KPI
     long countByAssignedEmployeeIdAndStatusIn(

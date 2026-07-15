@@ -43,9 +43,10 @@ public class MaintenanceTaskManagerService {
 
         scopeValidator.validateManagerAccess(manager, propertyId);
 
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 100));
+        String normalizedSearch = normalizeSearch(search);
         Page<MaintenanceTicket> result =
-                ticketRepository.findForManagerBoard(propertyId, status, search, pageable);
+                ticketRepository.findForManagerBoard(propertyId, status, normalizedSearch, pageable);
 
         List<MaintenanceTaskSummaryResponse> content = result.getContent().stream()
                 .map(MaintenanceTaskSummaryResponse::fromEntity)
@@ -61,7 +62,7 @@ public class MaintenanceTaskManagerService {
 
     @Transactional
     public MaintenanceTaskSummaryResponse assignForManager(User manager, UUID ticketId, AssignMaintenanceTaskRequest req) {
-        MaintenanceTicket ticket = ticketRepository.findById(ticketId)
+        MaintenanceTicket ticket = ticketRepository.findByIdWithDetails(ticketId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy yêu cầu bảo trì"));
 
         UUID propertyId = ticket.getRoom().getProperty().getId();
@@ -84,12 +85,13 @@ public class MaintenanceTaskManagerService {
 
         notifyCustomer(saved, "Yêu cầu bảo trì '%s' đã được gán cho kỹ thuật viên.");
 
-        return MaintenanceTaskSummaryResponse.fromEntity(saved);
+        return MaintenanceTaskSummaryResponse.fromEntity(
+                ticketRepository.findByIdWithDetails(saved.getId()).orElse(saved));
     }
 
     @Transactional
     public MaintenanceTaskSummaryResponse updateStatusForManager(User manager, UUID ticketId, UpdateMaintenanceStatusRequest req) {
-        MaintenanceTicket ticket = ticketRepository.findById(ticketId)
+        MaintenanceTicket ticket = ticketRepository.findByIdWithDetails(ticketId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy yêu cầu bảo trì"));
 
         scopeValidator.validateManagerAccess(manager, ticket.getRoom().getProperty().getId());
@@ -115,7 +117,8 @@ public class MaintenanceTaskManagerService {
 
         notifyCustomer(saved, "Yêu cầu bảo trì '%s' đã được xác nhận hoàn tất và đóng.");
 
-        return MaintenanceTaskSummaryResponse.fromEntity(saved);
+        return MaintenanceTaskSummaryResponse.fromEntity(
+                ticketRepository.findByIdWithDetails(saved.getId()).orElse(saved));
     }
 
     // Kỹ thuật viên phải là nhân viên ACTIVE thuộc property này.
@@ -128,8 +131,9 @@ public class MaintenanceTaskManagerService {
         return employeeAssignmentRepository.findActiveEmployeesByPropertyId(
                         propertyId, EmployeePropertyAssignment.Status.ACTIVE, User.Role.EMPLOYEE).stream()
                 .filter(e -> e.getId().equals(assigneeId))
+                .filter(e -> e.getStatus() == User.Status.ACTIVE)
                 .findFirst()
-                .orElseThrow(() -> new BusinessException("Kỹ thuật viên không hợp lệ"));
+                .orElseThrow(() -> new BusinessException("Chỉ có thể gán kỹ thuật viên đang hoạt động"));
     }
 
     private void notifyCustomer(MaintenanceTicket ticket, String messageTemplate) {
@@ -140,5 +144,12 @@ public class MaintenanceTaskManagerService {
                 String.format(messageTemplate, ticket.getTitle()),
                 ticket.getId(),
                 "MaintenanceTicket");
+    }
+
+    private static String normalizeSearch(String search) {
+        if (search == null || search.isBlank()) {
+            return null;
+        }
+        return search.trim();
     }
 }
