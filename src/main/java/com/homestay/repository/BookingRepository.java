@@ -18,6 +18,29 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     List<Booking> findByCustomerOrderByCreatedAtDesc(User customer);
 
+    /** SCR-23 — Active bookings for create-maintenance dropdown (JOIN FETCH room+property). */
+    @Query("""
+            SELECT DISTINCT b FROM Booking b
+            JOIN FETCH b.room r
+            JOIN FETCH r.property
+            WHERE b.customer.id = :customerId
+              AND b.status IN :statuses
+            ORDER BY b.createdAt DESC
+            """)
+    List<Booking> findActiveWithRoomPropertyByCustomerId(
+            @Param("customerId") UUID customerId,
+            @Param("statuses") List<Booking.Status> statuses);
+
+    /** SCR-23 — Load booking with room+property for create maintenance. */
+    @Query("""
+            SELECT b FROM Booking b
+            JOIN FETCH b.room r
+            JOIN FETCH r.property
+            JOIN FETCH b.customer
+            WHERE b.id = :id
+            """)
+    java.util.Optional<Booking> findByIdWithRoomAndCustomer(@Param("id") UUID id);
+
     Page<Booking> findByCustomerId(UUID customerId, Pageable pageable);
 
     Page<Booking> findByCustomerIdAndStatus(UUID customerId, Booking.Status status, Pageable pageable);
