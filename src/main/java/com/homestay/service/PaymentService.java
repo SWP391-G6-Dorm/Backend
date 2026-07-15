@@ -98,7 +98,7 @@ public class PaymentService {
 
     @Transactional(readOnly = true)
     public PageResponse<PaymentSummaryResponse> getMyPayments(User currentUser, int page, int size, String status) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Pageable pageable = PageRequest.of(page, size);
         Payment.Status paymentStatus = parseStatus(status);
         Page<Payment> result = paymentStatus == null
                 ? paymentRepository.findByCustomerIdOrderByCreatedAtDesc(currentUser.getId(), pageable)

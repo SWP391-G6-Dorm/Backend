@@ -77,6 +77,42 @@ GO
 UPDATE users SET full_name = N'Nguyễn Văn An' WHERE email = 'an.nguyen@demo.com';
 GO
 
+IF OBJECT_ID('promotions', 'U') IS NOT NULL
+BEGIN
+    ALTER TABLE promotions ALTER COLUMN subtitle NVARCHAR(100) NOT NULL;
+    ALTER TABLE promotions ALTER COLUMN title NVARCHAR(200) NOT NULL;
+    ALTER TABLE promotions ALTER COLUMN description NVARCHAR(400) NULL;
+    ALTER TABLE promotions ALTER COLUMN cta_text NVARCHAR(80) NOT NULL;
+    ALTER TABLE promotions ALTER COLUMN cta_url NVARCHAR(300) NOT NULL;
+    ALTER TABLE promotions ALTER COLUMN image_url NVARCHAR(500) NULL;
+    ALTER TABLE promotions ALTER COLUMN color_theme NVARCHAR(20) NOT NULL;
+
+    UPDATE promotions SET
+        subtitle = N'Ưu đãi cuối tuần',
+        title = N'Giảm 20%
+thứ 6 – chủ nhật',
+        description = N'Áp dụng cho phòng trống cuối tuần tại tất cả homestay.',
+        cta_text = N'Đặt ngay →'
+    WHERE sort_order = 0;
+
+    UPDATE promotions SET
+        subtitle = N'Đặt sớm hè 2026',
+        title = N'Combo 3 đêm
++ bữa sáng miễn phí',
+        description = N'Ưu đãi có hạn — đặt trước 31/08/2026.',
+        cta_text = N'Khám phá →'
+    WHERE sort_order = 1;
+
+    UPDATE promotions SET
+        subtitle = N'Lưu trú dài hạn',
+        title = N'Giảm thêm 15%
+cho booking từ 5 đêm',
+        description = N'Lý tưởng cho kỳ nghỉ dài ngày hoặc công tác.',
+        cta_text = N'Xem phòng →'
+    WHERE sort_order = 2;
+END
+GO
+
 UPDATE room_images SET image_url = REPLACE(image_url,
     'photo-1590071246406-4351809a5779', 'photo-1566073771259-6a8506099945')
 WHERE image_url LIKE '%photo-1590071246406%';

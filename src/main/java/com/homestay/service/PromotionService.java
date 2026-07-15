@@ -66,6 +66,7 @@ public class PromotionService {
         p.setDescription(req.getDescription());
         p.setCtaText(req.getCtaText());
         p.setCtaUrl(req.getCtaUrl());
+        p.setImageUrl(req.getImageUrl());
         p.setColorTheme(req.getColorTheme());
         p.setActive(req.getIsActive() != null ? req.getIsActive() : true);
         p.setSortOrder(req.getSortOrder());

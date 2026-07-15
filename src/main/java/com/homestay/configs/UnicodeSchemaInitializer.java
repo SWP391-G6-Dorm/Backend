@@ -34,6 +34,13 @@ public class UnicodeSchemaInitializer implements ApplicationRunner {
         migrate("rooms", "room_type", "NVARCHAR(100) NULL");
         migrate("rooms", "description", "NVARCHAR(MAX) NULL");
         migrate("users", "full_name", "NVARCHAR(200) NOT NULL");
+        migrate("promotions", "subtitle", "NVARCHAR(100) NOT NULL");
+        migrate("promotions", "title", "NVARCHAR(200) NOT NULL");
+        migrate("promotions", "description", "NVARCHAR(400) NULL");
+        migrate("promotions", "cta_text", "NVARCHAR(80) NOT NULL");
+        migrate("promotions", "cta_url", "NVARCHAR(300) NOT NULL");
+        migrate("promotions", "image_url", "NVARCHAR(500) NULL");
+        migrate("promotions", "color_theme", "NVARCHAR(20) NOT NULL");
     }
 
     /** room_number có unique constraint — phải drop trước khi đổi kiểu cột. */
