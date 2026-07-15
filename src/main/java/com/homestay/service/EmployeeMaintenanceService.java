@@ -15,16 +15,24 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
- * SCR-61 - Employee Maintenance Workspace.
- * List assigned tickets; update status ASSIGNED -> IN_PROGRESS -> RESOLVED only.
+ * SCR-61 — Employee Maintenance Workspace.
+ * List assigned tickets; update status ASSIGNED → IN_PROGRESS → RESOLVED only.
  */
 @Service
 @RequiredArgsConstructor
 public class EmployeeMaintenanceService {
+
+    private static final Map<MaintenanceTicket.Status, Set<MaintenanceTicket.Status>> ALLOWED_TRANSITIONS = Map.of(
+            MaintenanceTicket.Status.ASSIGNED, EnumSet.of(MaintenanceTicket.Status.IN_PROGRESS),
+            MaintenanceTicket.Status.IN_PROGRESS, EnumSet.of(MaintenanceTicket.Status.RESOLVED)
+    );
 
     private final MaintenanceTicketRepository maintenanceTicketRepository;
 
@@ -46,30 +54,38 @@ public class EmployeeMaintenanceService {
     }
 
     @Transactional
-    public void updateStatus(User employee, UUID ticketId, UpdateMaintenanceStatusRequest request) {
+    public EmployeeMaintenanceTicketResponse updateStatus(
+            User employee, UUID ticketId, UpdateMaintenanceStatusRequest request) {
         MaintenanceTicket ticket = maintenanceTicketRepository
                 .findByIdAndAssignedEmployeeId(ticketId, employee.getId())
-                .orElseThrow(() -> new ResourceNotFoundException("Khong tim thay maintenance ticket"));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Không tìm thấy yêu cầu bảo trì hoặc bạn không được giao việc này"));
 
         MaintenanceTicket.Status current = ticket.getStatus();
         MaintenanceTicket.Status next = request.getStatus();
 
-        boolean allowed =
-                (current == MaintenanceTicket.Status.ASSIGNED
-                        && next == MaintenanceTicket.Status.IN_PROGRESS)
-                || (current == MaintenanceTicket.Status.IN_PROGRESS
-                        && next == MaintenanceTicket.Status.RESOLVED);
-
-        if (!allowed) {
-            throw new BusinessException("Chuyen trang thai khong hop le");
+        Set<MaintenanceTicket.Status> allowed = ALLOWED_TRANSITIONS.getOrDefault(
+                current, EnumSet.noneOf(MaintenanceTicket.Status.class));
+        if (!allowed.contains(next)) {
+            throw new BusinessException(
+                    "Không thể chuyển trạng thái từ " + current + " sang " + next);
         }
 
         ticket.setStatus(next);
-        if (next == MaintenanceTicket.Status.RESOLVED
-                && StringUtils.hasText(request.getResolutionNote())) {
-            ticket.setResolutionNote(request.getResolutionNote());
+
+        if (next == MaintenanceTicket.Status.RESOLVED) {
+            String note = request.getResolutionNote() != null
+                    ? request.getResolutionNote().trim()
+                    : "";
+            if (!StringUtils.hasText(note)) {
+                throw new BusinessException(
+                        "Vui lòng ghi chú vật tư / cách xử lý khi đánh dấu đã xử lý");
+            }
+            ticket.setResolutionNote(note);
         }
-        maintenanceTicketRepository.save(ticket);
+
+        return EmployeeMaintenanceTicketResponse.fromEntity(
+                maintenanceTicketRepository.save(ticket));
     }
 
     private MaintenanceTicket.Status parseStatus(String statusStr) {
@@ -79,7 +95,7 @@ public class EmployeeMaintenanceService {
         try {
             return MaintenanceTicket.Status.valueOf(statusStr.trim().toUpperCase());
         } catch (IllegalArgumentException ex) {
-            throw new BusinessException("Trang thai khong hop le");
+            throw new BusinessException("Trạng thái không hợp lệ");
         }
     }
 }
