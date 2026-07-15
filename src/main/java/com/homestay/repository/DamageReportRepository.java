@@ -3,6 +3,7 @@ package com.homestay.repository;
 import com.homestay.entity.DamageReport;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -82,14 +83,14 @@ public interface DamageReportRepository extends JpaRepository<DamageReport, UUID
             @Param("pending") DamageReport.Status pending,
             Pageable pageable);
 
-    // SCR-63: danh sach damage report cua Employee (qua inspection.inspectedBy).
-    // JOIN FETCH to-one tranh N+1; KHONG JOIN FETCH items collection tren Page query.
-    @Query(value = """
+    // SCR-63: danh sách damage report của Employee (qua inspection.inspectedBy).
+    // EntityGraph to-one — tránh JOIN FETCH + Pageable (pagination sai / in-memory).
+    // Items load lazy trong @Transactional (không FETCH collection trên Page).
+    @EntityGraph(attributePaths = {"inspection", "inspection.room", "inspection.inspectedBy"})
+    @Query(
+            value = """
             SELECT dr FROM DamageReport dr
-            JOIN FETCH dr.inspection i
-            JOIN FETCH i.room r
-            LEFT JOIN FETCH i.inspectedBy ins
-            WHERE ins.id = :employeeId
+            WHERE dr.inspection.inspectedBy.id = :employeeId
             ORDER BY dr.createdAt DESC
             """,
             countQuery = """

@@ -42,6 +42,12 @@ public class EmployeeDamageReportService {
     @Transactional(readOnly = true)
     public PageResponse<EmployeeDamageReportResponse> list(User employee, Pageable pageable) {
         Page<DamageReport> page = damageReportRepository.findForEmployee(employee.getId(), pageable);
+        // Touch items collection while session is open (EntityGraph không fetch items trên Page).
+        page.getContent().forEach(dr -> {
+            if (dr.getItems() != null) {
+                dr.getItems().size();
+            }
+        });
         List<EmployeeDamageReportResponse> content = page.getContent().stream()
                 .map(EmployeeDamageReportResponse::fromEntity)
                 .toList();
@@ -111,6 +117,6 @@ public class EmployeeDamageReportService {
             }
         }
         throw new BusinessException(
-                "Khong tim thay inspection FAILED chua co bao cao cho phong nay");
+                "Không tìm thấy kiểm tra phòng FAILED chưa có báo cáo cho phòng này");
     }
 }

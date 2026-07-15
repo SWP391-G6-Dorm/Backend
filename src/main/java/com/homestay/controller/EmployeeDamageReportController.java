@@ -34,8 +34,10 @@ public class EmployeeDamageReportController {
             @AuthenticationPrincipal User currentUser,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "15") int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), 100);
         PageResponse<EmployeeDamageReportResponse> data =
-                employeeDamageReportService.list(currentUser, PageRequest.of(page, size));
+                employeeDamageReportService.list(currentUser, PageRequest.of(safePage, safeSize));
         return ResponseEntity.ok(ApiResponse.ok(data));
     }
 
@@ -45,6 +47,6 @@ public class EmployeeDamageReportController {
             @Valid @RequestBody CreateEmployeeDamageReportRequest request) {
         EmployeeDamageReportResponse data = employeeDamageReportService.create(currentUser, request);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.ok("Da tao bao cao hu hai", data));
+                .body(ApiResponse.ok("Đã tạo báo cáo hư hại", data));
     }
 }
