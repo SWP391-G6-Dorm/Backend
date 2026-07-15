@@ -51,6 +51,25 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
 
     long countByCustomerIdAndStatus(UUID customerId, Payment.Status status);
 
+    /** SCR-51 — Batch sum PAID payments per customer (Admin Directory). */
+    @Query("""
+            SELECT p.customer.id, COALESCE(SUM(p.amount), 0)
+            FROM Payment p
+            WHERE p.customer.id IN :customerIds
+              AND p.status = 'PAID'
+            GROUP BY p.customer.id
+            """)
+    List<Object[]> sumPaidAmountByCustomerIds(@Param("customerIds") List<UUID> customerIds);
+
+    /** SCR-51 — Total spend for one customer. */
+    @Query("""
+            SELECT COALESCE(SUM(p.amount), 0)
+            FROM Payment p
+            WHERE p.customer.id = :customerId
+              AND p.status = 'PAID'
+            """)
+    java.math.BigDecimal sumPaidAmountByCustomerId(@Param("customerId") UUID customerId);
+
     Page<Payment> findByCustomerIdOrderByCreatedAtDesc(UUID customerId, Pageable pageable);
 
     Page<Payment> findByCustomerIdAndStatusOrderByCreatedAtDesc(

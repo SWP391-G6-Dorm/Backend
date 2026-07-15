@@ -8,6 +8,9 @@ import com.homestay.repository.BookingRepository;
 import com.homestay.repository.MaintenanceTicketRepository;
 import com.homestay.repository.RoomRepository;
 import com.homestay.repository.UserRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -24,17 +27,20 @@ public class MaintenanceTicketService {
     private final UserRepository userRepository;
     private final RoomRepository roomRepository;
     private final NotificationService notificationService;
+    private final ReportPropertyScopeValidator scopeValidator;
 
     public MaintenanceTicketService(MaintenanceTicketRepository ticketRepository,
                                     BookingRepository bookingRepository,
                                     UserRepository userRepository,
                                     RoomRepository roomRepository,
-                                    NotificationService notificationService) {
+                                    NotificationService notificationService,
+                                    ReportPropertyScopeValidator scopeValidator) {
         this.ticketRepository = ticketRepository;
         this.bookingRepository = bookingRepository;
         this.userRepository = userRepository;
         this.roomRepository = roomRepository;
         this.notificationService = notificationService;
+        this.scopeValidator = scopeValidator;
     }
 
     // ── Helper: Convert MaintenanceTicket entity → Map for frontend ──
@@ -75,33 +81,33 @@ public class MaintenanceTicketService {
     }
 
     // ── 1. Customer: Get paginated tickets with optional status filter ──
+    @Transactional(readOnly = true)
     public Map<String, Object> getCustomerTicketsPaged(UUID customerId, String status, int page, int size) {
         User customer = userRepository.findById(customerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
 
-        List<MaintenanceTicket> allTickets = ticketRepository.findByCustomerOrderByCreatedAtDesc(customer);
+        MaintenanceTicket.Status ticketStatus = parseStatusFilter(status);
+        Pageable pageable = PageRequest.of(Math.max(page, 0), Math.max(size, 1));
+        Page<MaintenanceTicket> result = ticketRepository.findByCustomerPaged(customer, ticketStatus, pageable);
 
-        // Filter by status if not ALL
-        if (status != null && !status.equalsIgnoreCase("ALL")) {
-            allTickets = allTickets.stream()
-                    .filter(t -> t.getStatus().name().equalsIgnoreCase(status))
-                    .collect(Collectors.toList());
-        }
-
-        int totalElements = allTickets.size();
-        int totalPages = (int) Math.ceil((double) totalElements / size);
-
-        int fromIndex = Math.min(page * size, totalElements);
-        int toIndex = Math.min(fromIndex + size, totalElements);
-        List<Map<String, Object>> content = allTickets.subList(fromIndex, toIndex).stream()
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("content", result.getContent().stream()
                 .map(this::ticketToMap)
-                .collect(Collectors.toList());
+                .collect(Collectors.toList()));
+        response.put("totalElements", result.getTotalElements());
+        response.put("totalPages", result.getTotalPages());
+        return response;
+    }
 
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("content", content);
-        result.put("totalElements", totalElements);
-        result.put("totalPages", totalPages);
-        return result;
+    private static MaintenanceTicket.Status parseStatusFilter(String status) {
+        if (status == null || status.isBlank() || "ALL".equalsIgnoreCase(status.trim())) {
+            return null;
+        }
+        try {
+            return MaintenanceTicket.Status.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     // ── 2. Customer: Create ticket from multipart form ──
@@ -151,7 +157,7 @@ public class MaintenanceTicketService {
         User customer = userRepository.findById(customerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
 
-        Booking booking = bookingRepository.findById(bookingId)
+        Booking booking = bookingRepository.findByIdWithRoomAndCustomer(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Đặt phòng không tồn tại"));
 
         if (!booking.getCustomer().getId().equals(customerId)) {
@@ -208,11 +214,14 @@ public class MaintenanceTicketService {
     }
 
     // ── 3. Customer/Manager: Get ticket detail ──
+    @Transactional(readOnly = true)
     public Map<String, Object> getTicketDetail(User user, UUID ticketId) {
         MaintenanceTicket ticket = ticketRepository.findById(ticketId)
                 .orElseThrow(() -> new ResourceNotFoundException("Ticket not found"));
 
-        if (user.getRole() != User.Role.MANAGER && !ticket.getCustomer().getId().equals(user.getId())) {
+        if (user.getRole() == User.Role.MANAGER) {
+            scopeValidator.validateManagerAccess(user, ticket.getRoom().getProperty().getId());
+        } else if (!ticket.getCustomer().getId().equals(user.getId())) {
             throw new BusinessException("You do not have permission to view this ticket");
         }
 
@@ -370,38 +379,20 @@ public class MaintenanceTicketService {
         return ticketToMap(updated);
     }
 
-    // ── 8. Customer: Get active bookings for Create Ticket dropdown ──
+    // ── 8. Customer: Get active bookings for Create Ticket dropdown (SCR-23) ──
+    @Transactional(readOnly = true)
     public List<Map<String, Object>> getActiveBookingsForCustomer(UUID customerId) {
-        User customer = userRepository.findById(customerId)
-                .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
-
-        List<Booking> bookings = bookingRepository.findByCustomerOrderByCreatedAtDesc(customer);
-
-        List<Booking> activeBookings = bookings.stream()
-                .filter(b -> b.getStatus() == Booking.Status.CONFIRMED || b.getStatus() == Booking.Status.CHECKED_IN)
-                .collect(Collectors.toList());
-
-        // HACK FOR TESTING: Auto-generate a fake booking if the user has none
-        if (activeBookings.isEmpty()) {
-            Room firstRoom = roomRepository.findAll().stream().findFirst().orElse(null);
-            if (firstRoom != null) {
-                Booking fakeBooking = new Booking();
-                fakeBooking.setCustomer(customer);
-                fakeBooking.setRoom(firstRoom);
-                fakeBooking.setStatus(Booking.Status.CHECKED_IN);
-                fakeBooking.setCheckInDate(java.time.LocalDate.now().minusDays(1));
-                fakeBooking.setCheckOutDate(java.time.LocalDate.now().plusDays(2));
-                fakeBooking.setGuestCount(2);
-                fakeBooking.setTotalAmount(new java.math.BigDecimal("500000"));
-                fakeBooking.setDepositAmount(new java.math.BigDecimal("200000"));
-                fakeBooking.setRemainingAmount(new java.math.BigDecimal("300000"));
-                fakeBooking.setSpecialRequests("Mock booking for testing Maintenance");
-                bookingRepository.saveAndFlush(fakeBooking);
-                activeBookings.add(fakeBooking);
-            }
+        if (!userRepository.existsById(customerId)) {
+            throw new ResourceNotFoundException("Customer not found");
         }
 
-        // Only return CONFIRMED or CHECKED_IN bookings (active ones)
+        List<Booking.Status> activeStatuses = List.of(
+                Booking.Status.CONFIRMED,
+                Booking.Status.CHECKED_IN
+        );
+        List<Booking> activeBookings = bookingRepository.findActiveWithRoomPropertyByCustomerId(
+                customerId, activeStatuses);
+
         return activeBookings.stream()
                 .map(b -> {
                     Map<String, Object> m = new LinkedHashMap<>();

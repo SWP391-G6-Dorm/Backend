@@ -234,9 +234,21 @@ public class EmployeeManagementService {
 
 
 
-        if (userRepository.existsByEmail(request.getEmail())) {
+        String email = request.getEmail().trim().toLowerCase();
+
+        if (userRepository.existsByEmail(email)) {
 
             throw new ConflictException("Email đã được sử dụng");
+
+        }
+
+
+
+        String fullName = request.getFullName().trim();
+
+        if (fullName.length() < 2) {
+
+            throw new BusinessException("Họ tên phải có ít nhất 2 ký tự");
 
         }
 
@@ -256,9 +268,9 @@ public class EmployeeManagementService {
 
         User employee = new User();
 
-        employee.setFullName(request.getFullName().trim());
+        employee.setFullName(fullName);
 
-        employee.setEmail(request.getEmail().trim().toLowerCase());
+        employee.setEmail(email);
 
         employee.setPhone(request.getPhone() != null ? request.getPhone().trim() : null);
 
@@ -298,15 +310,25 @@ public class EmployeeManagementService {
 
     @Transactional
 
-    public EmployeeSummaryResponse updateEmployee(User manager, UUID employeeId, UpdateEmployeeRequest request) {
+    public EmployeeSummaryResponse updateEmployee(
 
-        EmployeePropertyAssignment epa = requireManagedActiveAssignment(manager, employeeId);
+            User manager, UUID employeeId, UUID propertyId, UpdateEmployeeRequest request) {
+
+        EmployeePropertyAssignment epa = requireManagedActiveAssignment(manager, employeeId, propertyId);
 
         User employee = epa.getEmployee();
 
+        String fullName = request.getFullName().trim();
+
+        if (fullName.length() < 2) {
+
+            throw new BusinessException("Họ tên phải có ít nhất 2 ký tự");
+
+        }
 
 
-        employee.setFullName(request.getFullName().trim());
+
+        employee.setFullName(fullName);
 
         employee.setPhone(request.getPhone() != null ? request.getPhone().trim() : null);
 
@@ -324,7 +346,7 @@ public class EmployeeManagementService {
 
     public EmployeeSummaryResponse updateEmployeeStatus(
 
-            User manager, UUID employeeId, UpdateEmployeeStatusRequest request) {
+            User manager, UUID employeeId, UUID propertyId, UpdateEmployeeStatusRequest request) {
 
         if (request.getStatus() != User.Status.ACTIVE && request.getStatus() != User.Status.SUSPENDED) {
 
@@ -334,7 +356,7 @@ public class EmployeeManagementService {
 
 
 
-        EmployeePropertyAssignment epa = requireManagedActiveAssignment(manager, employeeId);
+        EmployeePropertyAssignment epa = requireManagedActiveAssignment(manager, employeeId, propertyId);
 
         User employee = epa.getEmployee();
 
@@ -360,16 +382,19 @@ public class EmployeeManagementService {
 
 
 
-    private EmployeePropertyAssignment requireManagedActiveAssignment(User manager, UUID employeeId) {
+    private EmployeePropertyAssignment requireManagedActiveAssignment(
 
-        EmployeePropertyAssignment epa = assignmentRepository.findFirstByEmployee_IdAndStatus(
-                employeeId, EmployeePropertyAssignment.Status.ACTIVE)
+            User manager, UUID employeeId, UUID propertyId) {
 
-                .orElseThrow(() -> new ResourceNotFoundException("Nhân viên chưa được gán homestay nào"));
+        scopeValidator.validateManagerAccess(manager, propertyId);
 
-        scopeValidator.validateManagerAccess(manager, epa.getProperty().getId());
+        return assignmentRepository.findByEmployee_IdAndProperty_IdAndStatus(
 
-        return epa;
+                employeeId, propertyId, EmployeePropertyAssignment.Status.ACTIVE)
+
+                .orElseThrow(() -> new ResourceNotFoundException(
+
+                        "Nhân viên chưa được gán homestay này hoặc không tồn tại"));
 
     }
 
