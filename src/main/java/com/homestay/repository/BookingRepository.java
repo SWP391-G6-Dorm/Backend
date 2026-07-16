@@ -176,4 +176,15 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             @Param("propertyId") UUID propertyId,
             @Param("from") java.time.LocalDateTime from,
             @Param("to") java.time.LocalDateTime to);
+
+    /** Hold timeout job — unpaid PENDING_DEPOSIT past holdExpiresAt. */
+    @Query("""
+        SELECT b FROM Booking b
+        JOIN FETCH b.room
+        JOIN FETCH b.customer
+        WHERE b.status = 'PENDING_DEPOSIT'
+          AND b.holdExpiresAt IS NOT NULL
+          AND b.holdExpiresAt < :now
+        """)
+    List<Booking> findExpiredPendingDeposits(@Param("now") java.time.LocalDateTime now);
 }

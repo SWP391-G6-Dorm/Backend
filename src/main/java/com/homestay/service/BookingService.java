@@ -45,6 +45,13 @@ import java.util.UUID;
 @Service
 public class BookingService {
 
+    private static final java.util.Set<Room.Status> BOOKING_BLOCKED_ROOM_STATUSES = java.util.Set.of(
+            Room.Status.MAINTENANCE,
+            Room.Status.OUT_OF_SERVICE,
+            Room.Status.PENDING_CLEANING,
+            Room.Status.CLEANING_IN_PROGRESS
+    );
+
     private final BookingRepository bookingRepository;
     private final NotificationService notificationService;
     private final com.homestay.repository.RoomRepository roomRepository;
@@ -55,6 +62,7 @@ public class BookingService {
     private final RoomInspectionRepository roomInspectionRepository;
     private final BookingCheckVerificationRepository checkVerificationRepository;
     private final HousekeepingTaskService housekeepingTaskService;
+    private final long holdTimeoutMinutes;
 
     private static final long MAX_ID_DOC_BYTES = 5L * 1024 * 1024;
 
@@ -67,7 +75,8 @@ public class BookingService {
                           ManagerPropertyAssignmentRepository assignmentRepository,
                           RoomInspectionRepository roomInspectionRepository,
                           BookingCheckVerificationRepository checkVerificationRepository,
-                          HousekeepingTaskService housekeepingTaskService) {
+                          HousekeepingTaskService housekeepingTaskService,
+                          @org.springframework.beans.factory.annotation.Value("${app.booking.hold-timeout-minutes:10}") long holdTimeoutMinutes) {
         this.bookingRepository = bookingRepository;
         this.notificationService = notificationService;
         this.roomRepository = roomRepository;
@@ -78,6 +87,7 @@ public class BookingService {
         this.roomInspectionRepository = roomInspectionRepository;
         this.checkVerificationRepository = checkVerificationRepository;
         this.housekeepingTaskService = housekeepingTaskService;
+        this.holdTimeoutMinutes = holdTimeoutMinutes > 0 ? holdTimeoutMinutes : 10;
     }
 
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
@@ -562,12 +572,9 @@ public class BookingService {
         if (reason != null && !reason.isBlank()) {
             booking.setCancelReason(reason.trim());
         }
-        // Giải phóng phòng về AVAILABLE nếu đang ở trạng thái bị giữ
-        Room room = booking.getRoom();
-        if (room.getStatus() != Room.Status.OCCUPIED && room.getStatus() != Room.Status.MAINTENANCE) {
-            room.setStatus(Room.Status.AVAILABLE);
-        }
         bookingRepository.save(booking);
+        // Inventory is date-range based; only clear stale ops hold flags if no other blocking bookings
+        releaseStaleRoomHoldStatus(booking.getRoom());
 
         notificationService.sendNotification(
                 booking.getCustomer().getId(),
@@ -640,20 +647,22 @@ public class BookingService {
             throw new IllegalArgumentException("Ngày check-in không được trong quá khứ");
         }
 
-        Room room = roomRepository.findById(request.getRoomId())
+        Room room = roomRepository.findByIdForUpdate(request.getRoomId())
                 .orElseThrow(() -> new com.homestay.exception.ResourceNotFoundException("Phòng không tồn tại"));
 
-        if (room.getStatus() != Room.Status.AVAILABLE) {
-            throw new IllegalArgumentException("Phòng hiện không trống để đặt");
+        if (BOOKING_BLOCKED_ROOM_STATUSES.contains(room.getStatus())) {
+            throw new ConflictException("Phòng hiện không khả dụng để đặt (bảo trì / ngưng phục vụ / đang dọn)");
         }
 
         if (request.getGuestCount() > room.getCapacity()) {
             throw new IllegalArgumentException("Số người vượt quá sức chứa của phòng");
         }
 
-        boolean isOverlap = roomRepository.existsOverlapBooking(room.getId(), request.getCheckInDate(), request.getCheckOutDate());
+        boolean isOverlap = roomRepository.existsOverlapBooking(
+                room.getId(), request.getCheckInDate(), request.getCheckOutDate());
         if (isOverlap) {
-            throw new IllegalArgumentException("Phòng đã có người đặt trong khoảng thời gian này");
+            throw new ConflictException(
+                    "Phòng đang được giữ hoặc đã đặt trong khoảng ngày này. Vui lòng chọn ngày khác hoặc thử lại sau khi hết thời gian giữ chỗ.");
         }
 
         long nights = java.time.temporal.ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate());
@@ -674,15 +683,59 @@ public class BookingService {
         booking.setDepositAmount(depositAmount);
         booking.setRemainingAmount(remainingAmount);
         booking.setStatus(Booking.Status.PENDING_DEPOSIT);
-        // Hold window 30 minutes (configurable later via SystemSetting)
-        booking.setHoldExpiresAt(java.time.LocalDateTime.now().plusMinutes(30));
+        booking.setHoldExpiresAt(java.time.LocalDateTime.now().plusMinutes(holdTimeoutMinutes));
 
         booking = bookingRepository.save(booking);
-
-        // Giữ phòng ở trạng thái chờ cọc để tránh double-booking
-        room.setStatus(Room.Status.PENDING_DEPOSIT);
-        roomRepository.save(room);
+        // Do NOT set Room.status = PENDING_DEPOSIT — inventory is date-range based (Spec FR-04).
 
         return BookingDetailResponse.fromEntity(booking);
+    }
+
+    /**
+     * Hold timeout: cancel unpaid PENDING_DEPOSIT past holdExpiresAt and release inventory.
+     * @return number of bookings cancelled
+     */
+    @org.springframework.transaction.annotation.Transactional
+    public int cancelExpiredDepositHolds() {
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        List<Booking> expired = bookingRepository.findExpiredPendingDeposits(now);
+        int cancelled = 0;
+        for (Booking booking : expired) {
+            boolean depositPaid = paymentRepository.findByBookingIdOrderByCreatedAtDesc(booking.getId()).stream()
+                    .anyMatch(p -> p.getType() == Payment.Type.DEPOSIT && p.getStatus() == Payment.Status.PAID);
+            if (depositPaid) {
+                continue;
+            }
+            booking.setStatus(Booking.Status.CANCELLED);
+            booking.setCancelledAt(now);
+            booking.setCancelReason("Hold timeout — unpaid deposit");
+            bookingRepository.save(booking);
+            releaseStaleRoomHoldStatus(booking.getRoom());
+            cancelled++;
+
+            notificationService.sendNotification(
+                    booking.getCustomer().getId(),
+                    com.homestay.entity.Notification.Type.BOOKING_CANCELLED,
+                    "Booking Cancelled",
+                    "Your booking #" + booking.getId().toString().substring(0, 8).toUpperCase()
+                            + " was cancelled because the deposit was not paid in time.",
+                    booking.getId(), "Booking"
+            );
+        }
+        return cancelled;
+    }
+
+    /** Clear legacy PENDING_DEPOSIT/RESERVED room flags when no blocking bookings remain. */
+    private void releaseStaleRoomHoldStatus(Room room) {
+        if (room == null) {
+            return;
+        }
+        if (room.getStatus() != Room.Status.PENDING_DEPOSIT && room.getStatus() != Room.Status.RESERVED) {
+            return;
+        }
+        if (!roomRepository.hasBlockingBookings(room.getId())) {
+            room.setStatus(Room.Status.AVAILABLE);
+            roomRepository.save(room);
+        }
     }
 }

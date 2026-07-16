@@ -204,13 +204,17 @@ public class RoomService {
             throw new BusinessException("Ngày check-out phải sau ngày check-in");
         }
 
-        boolean hasOverlap = roomRepository.existsOverlapBooking(roomId, checkIn, checkOut);
-
+        Room room = findById(roomId);
         List<Object[]> ranges = roomRepository.findBookedDateRanges(roomId);
         List<AvailabilityResponse.DateRange> bookedRanges = ranges.stream()
                 .map(r -> new AvailabilityResponse.DateRange((LocalDate) r[0], (LocalDate) r[1]))
                 .collect(Collectors.toList());
 
+        if (MAINTENANCE_ROOM_STATUSES.contains(room.getStatus())) {
+            return new AvailabilityResponse(false, bookedRanges);
+        }
+
+        boolean hasOverlap = roomRepository.existsOverlapBooking(roomId, checkIn, checkOut);
         return new AvailabilityResponse(!hasOverlap, bookedRanges);
     }
 
@@ -227,7 +231,8 @@ public class RoomService {
             LocalDate checkIn = (LocalDate) row[0];
             LocalDate checkOut = (LocalDate) row[1];
             LocalDate cursor = checkIn;
-            while (cursor.isBefore(checkOut)) {
+            // Inclusive checkout day = turnover buffer (Spec FR-04)
+            while (!cursor.isAfter(checkOut)) {
                 if (!cursor.isBefore(startDate) && !cursor.isAfter(endDate)) {
                     bookedDates.add(cursor.toString());
                 }
