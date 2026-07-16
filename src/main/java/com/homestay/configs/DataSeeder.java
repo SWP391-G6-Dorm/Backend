@@ -21,19 +21,22 @@ public class DataSeeder implements CommandLineRunner {
     private final RoomRepository roomRepository;
     private final BookingRepository bookingRepository;
     private final PasswordEncoder passwordEncoder;
+    private final ManagerPropertyAssignmentRepository assignmentRepository;
 
     public DataSeeder(UserRepository userRepository,
                       PropertyRepository propertyRepository,
                       FloorRepository floorRepository,
                       RoomRepository roomRepository,
                       BookingRepository bookingRepository,
-                      PasswordEncoder passwordEncoder) {
+                      PasswordEncoder passwordEncoder,
+                      ManagerPropertyAssignmentRepository assignmentRepository) {
         this.userRepository = userRepository;
         this.propertyRepository = propertyRepository;
         this.floorRepository = floorRepository;
         this.roomRepository = roomRepository;
         this.bookingRepository = bookingRepository;
         this.passwordEncoder = passwordEncoder;
+        this.assignmentRepository = assignmentRepository;
     }
 
     @Override
@@ -41,6 +44,7 @@ public class DataSeeder implements CommandLineRunner {
     public void run(String... args) {
         seedUsers();
         seedMockData();
+        seedManagerAssignments();
     }
 
     private void seedUsers() {
@@ -65,7 +69,40 @@ public class DataSeeder implements CommandLineRunner {
             user.setStatus(User.Status.ACTIVE);
             userRepository.save(user);
         }
+
+        if (!userRepository.existsByEmail("admin@dev.local")) {
+            User user = new User();
+            user.setFullName("Dev Admin");
+            user.setEmail("admin@dev.local");
+            user.setPhone("0988888888");
+            user.setPasswordHash(passwordEncoder.encode("password123"));
+            user.setRole(User.Role.ADMIN);
+            user.setStatus(User.Status.ACTIVE);
+            userRepository.save(user);
+        }
     }
+
+    private void seedManagerAssignments() {
+        User manager = userRepository.findByEmail("manager@dev.local").orElse(null);
+        User admin = userRepository.findByEmail("admin@dev.local").orElse(null);
+        if (manager == null || admin == null) return;
+
+        List<Property> properties = propertyRepository.findAll();
+        for (Property property : properties) {
+            boolean exists = assignmentRepository.existsByManagerIdAndPropertyIdAndStatus(
+                manager.getId(), property.getId(), ManagerPropertyAssignment.Status.ACTIVE);
+            if (!exists) {
+                ManagerPropertyAssignment assignment = new ManagerPropertyAssignment();
+                assignment.setManager(manager);
+                assignment.setProperty(property);
+                assignment.setAssignedBy(admin);
+                assignment.setAssignedAt(LocalDateTime.now());
+                assignment.setStatus(ManagerPropertyAssignment.Status.ACTIVE);
+                assignmentRepository.save(assignment);
+            }
+        }
+    }
+
 
     private void seedMockData() {
         User customer = userRepository.findByEmail("customer@dev.local").orElse(null);
