@@ -102,7 +102,7 @@ public class PaymentService {
         payment.setMethod(Payment.Method.VNPAY);
         payment.setAmount(amountBd);
         payment.setStatus(Payment.Status.PENDING);
-        paymentRepository.save(payment);
+        payment = paymentRepository.save(payment);
 
         String orderInfo = "Thanh toan " + type + " cho Booking " + booking.getId();
         String paymentUrl = vnPayService.createOrder(
@@ -201,8 +201,9 @@ public class PaymentService {
         Payment payment = paymentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Payment không tồn tại"));
 
-        boolean isManager = currentUser.getRole() == User.Role.MANAGER;
-        if (!isManager && !payment.getCustomer().getId().equals(currentUser.getId())) {
+        if (currentUser.getRole() == User.Role.MANAGER) {
+            assertManagerOwnsPayment(currentUser, payment);
+        } else if (!payment.getCustomer().getId().equals(currentUser.getId())) {
             throw new ForbiddenException("Không có quyền xem thanh toán này");
         }
 
@@ -218,32 +219,57 @@ public class PaymentService {
         Payment payment = paymentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Payment không tồn tại"));
 
+        assertManagerOwnsPayment(currentUser, payment);
+
         if (payment.getStatus() != Payment.Status.PENDING) {
-            throw new IllegalArgumentException("Chỉ có thể duyệt thanh toán đang ở trạng thái PENDING");
+            throw new BusinessException("Chỉ có thể duyệt thanh toán đang ở trạng thái PENDING");
         }
 
-        payment.setStatus(request.getStatus());
+        Payment.Status target = request.getStatus();
+        if (target != Payment.Status.PAID && target != Payment.Status.FAILED) {
+            throw new BusinessException("Trạng thái duyệt phải là PAID hoặc FAILED");
+        }
+
+        if (target == Payment.Status.FAILED
+                && (request.getNote() == null || request.getNote().isBlank())) {
+            throw new BusinessException("Vui lòng nhập lý do từ chối");
+        }
+
+        // Bank transfer: must have PaymentReceipt before Approve (FR-12 / security)
+        if (target == Payment.Status.PAID
+                && payment.getMethod() == Payment.Method.BANK_TRANSFER) {
+            if (payment.getReceipt() == null
+                    || payment.getReceipt().getFileUrl() == null
+                    || payment.getReceipt().getFileUrl().isBlank()) {
+                throw new BusinessException(
+                        "Phải có biên lai (PaymentReceipt) trước khi duyệt chuyển khoản");
+            }
+        }
+
+        // VNPay is auto-confirmed via gateway — managers should not manually Approve VNPay
+        if (target == Payment.Status.PAID && payment.getMethod() == Payment.Method.VNPAY) {
+            throw new BusinessException("Thanh toán VNPay được xác nhận tự động, không duyệt thủ công");
+        }
+
+        payment.setStatus(target);
         payment.setVerificationNote(request.getNote());
         payment.setVerifiedBy(currentUser);
         payment.setVerifiedAt(LocalDateTime.now());
-        
-        if (request.getStatus() == Payment.Status.PAID) {
+
+        if (target == Payment.Status.PAID) {
             payment.setPaidAt(LocalDateTime.now());
             Booking booking = payment.getBooking();
-            
-            // Theo AGENTS.md: Deposit xong thì Booking -> CONFIRMED và sinh Hợp đồng
+
             if (payment.getType() == Payment.Type.DEPOSIT) {
                 if (booking.getStatus() == Booking.Status.PENDING_DEPOSIT) {
                     booking.setStatus(Booking.Status.CONFIRMED);
                     bookingRepository.save(booking);
                 }
                 paymentRepository.save(payment);
-                
-                // Tự động sinh PDF và gửi Email hợp đồng
+
                 try {
                     contractService.autoGenerateAndSendContract(booking.getId(), currentUser);
                 } catch (Exception e) {
-                    // Log error if needed, but don't rollback payment verification
                     e.printStackTrace();
                 }
             } else {
@@ -254,6 +280,11 @@ public class PaymentService {
         }
 
         return PaymentDetailResponse.fromEntity(payment);
+    }
+
+    private void assertManagerOwnsPayment(User manager, Payment payment) {
+        UUID propertyId = payment.getBooking().getRoom().getProperty().getId();
+        scopeValidator.validateManagerAccess(manager, propertyId);
     }
 
     private Pageable buildPageable(int page, int size, String sort) {

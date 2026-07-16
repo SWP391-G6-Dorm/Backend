@@ -1,19 +1,14 @@
 package com.homestay.controller;
 
-import com.homestay.config.VNPayConfig;
-import com.homestay.dto.response.ApiResponse;
 import com.homestay.entity.Booking;
 import com.homestay.entity.Payment;
-import com.homestay.entity.User;
 import com.homestay.repository.BookingRepository;
 import com.homestay.repository.PaymentRepository;
 import com.homestay.service.ContractService;
-import com.homestay.service.PaymentService;
 import com.homestay.service.VNPayService;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -24,37 +19,28 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * VNPay browser return callback (permitAll).
+ * Create payment URL: {@link PaymentV1Controller} POST /api/v1/payments/vnpay*.
+ */
 @RestController
 @RequestMapping("/api/payments")
 public class CustomerPaymentController {
 
     private final VNPayService vnPayService;
-    private final VNPayConfig vnPayConfig;
     private final BookingRepository bookingRepository;
     private final PaymentRepository paymentRepository;
     private final ContractService contractService;
-    private final PaymentService paymentService;
 
-    public CustomerPaymentController(VNPayService vnPayService, VNPayConfig vnPayConfig,
-                                     BookingRepository bookingRepository, PaymentRepository paymentRepository,
-                                     ContractService contractService, PaymentService paymentService) {
+    public CustomerPaymentController(
+            VNPayService vnPayService,
+            BookingRepository bookingRepository,
+            PaymentRepository paymentRepository,
+            ContractService contractService) {
         this.vnPayService = vnPayService;
-        this.vnPayConfig = vnPayConfig;
         this.bookingRepository = bookingRepository;
         this.paymentRepository = paymentRepository;
         this.contractService = contractService;
-        this.paymentService = paymentService;
-    }
-
-    @PostMapping("/vnpay/create-url")
-    @PreAuthorize("hasRole('CUSTOMER')")
-    public ResponseEntity<ApiResponse<Map<String, String>>> createPaymentUrl(
-            @RequestParam UUID bookingId,
-            @RequestParam String type,
-            @AuthenticationPrincipal User currentUser) {
-
-        Map<String, String> result = paymentService.createVnpayPaymentUrl(bookingId, type, currentUser);
-        return ResponseEntity.ok(ApiResponse.ok("Tạo URL thanh toán thành công", result));
     }
 
     @GetMapping("/vnpay/return")
@@ -63,7 +49,7 @@ public class CustomerPaymentController {
         for (Enumeration<String> params = request.getParameterNames(); params.hasMoreElements(); ) {
             String fieldName = params.nextElement();
             String fieldValue = request.getParameter(fieldName);
-            if ((fieldValue != null) && (fieldValue.length() > 0) && fieldName.startsWith("vnp_")) {
+            if ((fieldValue != null) && (!fieldValue.isEmpty()) && fieldName.startsWith("vnp_")) {
                 fields.put(fieldName, fieldValue);
             }
         }
@@ -96,15 +82,13 @@ public class CustomerPaymentController {
                 if (payment.getStatus() == Payment.Status.PENDING) {
                     payment.setStatus(Payment.Status.PAID);
                     payment.setPaidAt(LocalDateTime.now());
-                    
+
                     Booking booking = payment.getBooking();
                     if (payment.getType() == Payment.Type.DEPOSIT && booking.getStatus() == Booking.Status.PENDING_DEPOSIT) {
                         booking.setStatus(Booking.Status.CONFIRMED);
                         bookingRepository.save(booking);
-                        
+
                         try {
-                            // User verification uses current context which is null here for return URL.
-                            // contractService usually needs a user. Let's pass the customer user.
                             contractService.autoGenerateAndSendContract(booking.getId(), payment.getCustomer());
                         } catch (Exception e) {
                             e.printStackTrace();
