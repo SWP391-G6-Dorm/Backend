@@ -60,10 +60,9 @@ public class ReviewService {
         review.setComment(comment);
         review.setStatus(Review.Status.PUBLISHED);
 
-        review = reviewRepository.save(review);
+        Review saved = reviewRepository.save(review);
 
         // Re-fetch with EntityGraph so MyReviewResponse can safely read room/property/images
-        Review saved = review;
         return reviewRepository.findByIdAndCustomer_Id(saved.getId(), currentUser.getId())
                 .map(MyReviewResponse::fromEntity)
                 .orElseGet(() -> MyReviewResponse.fromEntity(saved));
@@ -101,8 +100,7 @@ public class ReviewService {
         review.setRating(request.getRating());
         review.setComment(comment);
 
-        review = reviewRepository.save(review);
-        Review saved = review;
+        Review saved = reviewRepository.save(review);
         return reviewRepository.findByIdAndCustomer_Id(saved.getId(), currentUser.getId())
                 .map(MyReviewResponse::fromEntity)
                 .orElseGet(() -> MyReviewResponse.fromEntity(saved));

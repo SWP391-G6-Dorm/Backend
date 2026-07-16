@@ -8,6 +8,7 @@ import com.homestay.dto.response.PageResponse;
 import com.homestay.dto.response.PropertyDetailResponse;
 import com.homestay.dto.response.PropertyResponse;
 import com.homestay.dto.response.PropertyStructureResponse;
+import com.homestay.entity.User;
 import com.homestay.service.FloorService;
 import com.homestay.service.PropertyService;
 import jakarta.validation.Valid;
@@ -16,6 +17,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -74,11 +76,13 @@ public class PropertyController {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok("Tạo property thành công", res));
     }
 
-    // SCR-37: Xem cây cấu trúc Property → Floors → Rooms — chỉ Manager
+    // Legacy structure tree — Manager + assignment (prefer /api/v1/properties/{id}/tree)
     @GetMapping("/{id}/structure")
     @PreAuthorize("hasRole('MANAGER')")
-    public ResponseEntity<ApiResponse<PropertyStructureResponse>> getStructure(@PathVariable UUID id) {
-        return ResponseEntity.ok(ApiResponse.ok(floorService.getStructure(id)));
+    public ResponseEntity<ApiResponse<PropertyStructureResponse>> getStructure(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(ApiResponse.ok(floorService.getStructureForManager(currentUser, id)));
     }
 
     // Cập nhật property - chỉ Manager

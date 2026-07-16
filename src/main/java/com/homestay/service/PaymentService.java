@@ -9,6 +9,7 @@ import com.homestay.entity.Booking;
 import com.homestay.entity.Payment;
 import com.homestay.entity.Property;
 import com.homestay.entity.User;
+import com.homestay.exception.BusinessException;
 import com.homestay.exception.ForbiddenException;
 import com.homestay.exception.ResourceNotFoundException;
 import com.homestay.repository.BookingRepository;
@@ -65,25 +66,41 @@ public class PaymentService {
             throw new ForbiddenException("Bạn không có quyền thanh toán cho booking này");
         }
 
-        if ("DEPOSIT".equals(type) && booking.getStatus() != Booking.Status.PENDING_DEPOSIT) {
-            throw new IllegalArgumentException("Booking này không ở trạng thái chờ đặt cọc");
-        }
-
-        long amount;
         if ("DEPOSIT".equals(type)) {
-            amount = booking.getTotalAmount().multiply(new BigDecimal("0.4")).longValue();
+            if (booking.getStatus() != Booking.Status.PENDING_DEPOSIT) {
+                throw new BusinessException("Booking này không ở trạng thái chờ đặt cọc");
+            }
+            if (booking.getHoldExpiresAt() != null
+                    && booking.getHoldExpiresAt().isBefore(LocalDateTime.now())) {
+                throw new BusinessException("Payment window expired");
+            }
         } else if ("REMAINING_BALANCE".equals(type)) {
-            amount = booking.getTotalAmount().multiply(new BigDecimal("0.6")).longValue();
+            if (booking.getStatus() != Booking.Status.CONFIRMED
+                    && booking.getStatus() != Booking.Status.CHECKED_IN) {
+                throw new BusinessException("Booking không đủ điều kiện thanh toán phần còn lại");
+            }
         } else {
             throw new IllegalArgumentException("Loại thanh toán không hợp lệ");
         }
+
+        // Use snapshot amounts on booking — do not recalculate from current room price
+        BigDecimal amountBd;
+        if ("DEPOSIT".equals(type)) {
+            amountBd = booking.getDepositAmount();
+        } else {
+            amountBd = booking.getRemainingAmount();
+        }
+        if (amountBd == null || amountBd.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("Số tiền thanh toán không hợp lệ");
+        }
+        long amount = amountBd.setScale(0, java.math.RoundingMode.HALF_UP).longValue();
 
         Payment payment = new Payment();
         payment.setBooking(booking);
         payment.setCustomer(currentUser);
         payment.setType(Payment.Type.valueOf(type));
         payment.setMethod(Payment.Method.VNPAY);
-        payment.setAmount(BigDecimal.valueOf(amount));
+        payment.setAmount(amountBd);
         payment.setStatus(Payment.Status.PENDING);
         paymentRepository.save(payment);
 

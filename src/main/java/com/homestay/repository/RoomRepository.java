@@ -1,16 +1,19 @@
 package com.homestay.repository;
 
 import com.homestay.entity.Room;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -39,35 +42,48 @@ public interface RoomRepository extends JpaRepository<Room, UUID>, JpaSpecificat
     Page<Room> findByRoomNumberContainingIgnoreCaseOrRoomTypeContainingIgnoreCase(
             String roomNumber, String roomType, Pageable pageable);
 
-    // Kiểm tra phòng có bị trùng lịch không
+    /** Pessimistic lock — SQL Server race safety on create booking. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT r FROM Room r WHERE r.id = :id")
+    Optional<Room> findByIdForUpdate(@Param("id") UUID id);
+
+    // Overlap with checkout-day buffer: inventory [checkIn, checkOut] inclusive
     @Query("""
         SELECT COUNT(b) > 0 FROM Booking b
         WHERE b.room.id = :roomId
-        AND b.status NOT IN ('CANCELLED')
-        AND b.checkInDate < :checkOut
-        AND b.checkOutDate > :checkIn
+        AND b.status NOT IN ('CANCELLED', 'CHECKED_OUT', 'NO_SHOW')
+        AND b.checkInDate <= :checkOut
+        AND b.checkOutDate >= :checkIn
     """)
     boolean existsOverlapBooking(@Param("roomId") UUID roomId,
                                  @Param("checkIn") LocalDate checkIn,
                                  @Param("checkOut") LocalDate checkOut);
 
+    /** True if room still has any inventory-blocking booking. */
+    @Query("""
+        SELECT COUNT(b) > 0 FROM Booking b
+        WHERE b.room.id = :roomId
+        AND b.status NOT IN ('CANCELLED', 'CHECKED_OUT', 'NO_SHOW')
+    """)
+    boolean hasBlockingBookings(@Param("roomId") UUID roomId);
+
     // Lấy các khoảng ngày đã đặt kèm trạng thái booking (dùng cho SCR-10 calendar)
     @Query("""
         SELECT b.checkInDate, b.checkOutDate, b.status FROM Booking b
         WHERE b.room.id = :roomId
-        AND b.status NOT IN ('CANCELLED', 'CHECKED_OUT')
+        AND b.status NOT IN ('CANCELLED', 'CHECKED_OUT', 'NO_SHOW')
         AND b.checkOutDate >= CURRENT_DATE
         ORDER BY b.checkInDate
     """)
     List<Object[]> findBookedDateRanges(@Param("roomId") UUID roomId);
 
-    // SCR-09: blocking bookings overlapping a date window
+    // SCR-09: blocking bookings overlapping a date window (inventory includes checkout day)
     @Query("""
         SELECT b.checkInDate, b.checkOutDate, b.status FROM Booking b
         WHERE b.room.id = :roomId
         AND b.status IN ('PENDING_DEPOSIT', 'CONFIRMED', 'CHECKED_IN', 'PENDING_INSPECTION', 'PENDING_DAMAGE_PAYMENT')
         AND b.checkInDate <= :endDate
-        AND b.checkOutDate > :startDate
+        AND b.checkOutDate >= :startDate
         ORDER BY b.checkInDate
     """)
     List<Object[]> findBlockingBookingsInRange(@Param("roomId") UUID roomId,
@@ -91,9 +107,9 @@ public interface RoomRepository extends JpaRepository<Room, UUID>, JpaSpecificat
         AND (:checkIn IS NULL OR :checkOut IS NULL OR NOT EXISTS (
             SELECT b FROM Booking b
             WHERE b.room = r
-            AND b.status NOT IN ('CANCELLED', 'CHECKED_OUT')
-            AND b.checkInDate < :checkOut
-            AND b.checkOutDate > :checkIn
+            AND b.status NOT IN ('CANCELLED', 'CHECKED_OUT', 'NO_SHOW')
+            AND b.checkInDate <= :checkOut
+            AND b.checkOutDate >= :checkIn
         ))
     """)
     Page<Room> findPublicWithFilters(

@@ -83,7 +83,17 @@ public class LandingController {
             @RequestParam(defaultValue = "createdAt,desc") String sort) {
 
         Integer guestCapacity = guests != null ? guests : capacity;
-        String roomStatus = (status != null && !status.isBlank()) ? status : "AVAILABLE";
+        // With date filters: do not force Room.Status=AVAILABLE (inventory is date-range based).
+        // Without dates: default AVAILABLE for simple browse.
+        boolean hasDates = checkIn != null && checkOut != null;
+        String roomStatus;
+        if (status != null && !status.isBlank()) {
+            roomStatus = status;
+        } else if (hasDates) {
+            roomStatus = null;
+        } else {
+            roomStatus = "AVAILABLE";
+        }
 
         String[] sortParts = sort.split(",");
         Sort.Direction dir = sortParts.length > 1 && sortParts[1].equalsIgnoreCase("asc")

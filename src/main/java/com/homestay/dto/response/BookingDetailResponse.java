@@ -24,17 +24,21 @@ public class BookingDetailResponse {
     private String roomNumber;
     private String roomType;
     private String propertyName;
-    
+
     private LocalDate checkInDate;
     private LocalDate checkOutDate;
     private Integer guestCount;
-    
+
     private BigDecimal totalAmount;
     private BigDecimal depositAmount;
     private BigDecimal remainingAmount;
-    
+    private BigDecimal damageFeeAmount;
+
     private String status;
     private String specialRequests;
+    /** Deposit hold deadline (SCR-20 countdown); null when not Pending Deposit */
+    private LocalDateTime holdExpiresAt;
+    private String cancelReason;
     private LocalDateTime createdAt;
     private boolean isReviewed;
 
@@ -68,26 +72,29 @@ public class BookingDetailResponse {
     }
 
     public static BookingDetailResponse fromEntity(Booking booking, boolean isReviewed) {
-        return new BookingDetailResponse(
-                booking.getId(),
-                booking.getCustomer().getId(),
-                booking.getCustomer().getFullName(),
-                booking.getCustomer().getEmail(),
-                booking.getCustomer().getPhone(),
-                booking.getRoom().getRoomNumber(),
-                booking.getRoom().getRoomType(),
-                booking.getRoom().getProperty().getName(),
-                booking.getCheckInDate(),
-                booking.getCheckOutDate(),
-                booking.getGuestCount(),
-                booking.getTotalAmount(),
-                booking.getDepositAmount(),
-                booking.getRemainingAmount(),
-                booking.getStatus().name(),
-                booking.getSpecialRequests(),
-                booking.getCreatedAt(),
-                isReviewed,
-                null
-        );
+        BookingDetailResponse response = new BookingDetailResponse();
+        response.setId(booking.getId());
+        response.setCustomerId(booking.getCustomer().getId());
+        response.setCustomerName(booking.getCustomer().getFullName());
+        response.setCustomerEmail(booking.getCustomer().getEmail());
+        response.setCustomerPhone(booking.getCustomer().getPhone());
+        response.setRoomNumber(booking.getRoom().getRoomNumber());
+        response.setRoomType(booking.getRoom().getRoomType());
+        response.setPropertyName(booking.getRoom().getProperty().getName());
+        response.setCheckInDate(booking.getCheckInDate());
+        response.setCheckOutDate(booking.getCheckOutDate());
+        response.setGuestCount(booking.getGuestCount());
+        response.setTotalAmount(booking.getTotalAmount());
+        response.setDepositAmount(booking.getDepositAmount());
+        response.setRemainingAmount(booking.getRemainingAmount());
+        response.setDamageFeeAmount(booking.getDamageFeeAmount());
+        response.setStatus(booking.getStatus().name());
+        response.setSpecialRequests(booking.getSpecialRequests());
+        response.setHoldExpiresAt(booking.getHoldExpiresAt());
+        response.setCancelReason(booking.getCancelReason());
+        response.setCreatedAt(booking.getCreatedAt());
+        response.setReviewed(isReviewed);
+        response.setPayments(null);
+        return response;
     }
 }
