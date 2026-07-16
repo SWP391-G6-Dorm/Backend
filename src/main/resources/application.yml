@@ -72,6 +72,11 @@ app:
   upload:
     dir: uploads/
 
+  # Booking hold (Pending Deposit unpaid timeout)
+  booking:
+    hold-timeout-minutes: ${BOOKING_HOLD_TIMEOUT_MINUTES:10}
+    hold-timeout-job-ms: ${BOOKING_HOLD_TIMEOUT_JOB_MS:60000}
+
   # Tự động thêm dữ liệu demo khi khởi động (dev)
   seed:
     enabled: true

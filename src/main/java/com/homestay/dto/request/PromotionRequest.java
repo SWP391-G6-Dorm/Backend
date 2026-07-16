@@ -23,6 +23,9 @@ public class PromotionRequest {
     @NotBlank(message = "CTA URL is required")
     private String ctaUrl;
 
+    /** URL ảnh banner (tùy chọn) */
+    private String imageUrl;
+
     @NotBlank(message = "Color theme is required")
     private String colorTheme;
 

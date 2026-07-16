@@ -32,19 +32,24 @@ public class ReviewService {
 
     @Transactional
     public MyReviewResponse submitReview(CreateReviewRequest request, User currentUser) {
-        Booking booking = bookingRepository.findById(request.getBookingId())
-                .orElseThrow(() -> new ResourceNotFoundException("Booking does not exist"));
+        Booking booking = bookingRepository.findByIdWithRoomAndCustomer(request.getBookingId())
+                .orElseThrow(() -> new ResourceNotFoundException("Đặt phòng không tồn tại"));
 
         if (!booking.getCustomer().getId().equals(currentUser.getId())) {
-            throw new ForbiddenException("You cannot review someone else's booking");
+            throw new ForbiddenException("Bạn không thể đánh giá đơn đặt phòng của người khác");
         }
 
         if (booking.getStatus() != Booking.Status.CHECKED_OUT) {
-            throw new BusinessException("Reviews are only allowed after check-out");
+            throw new BusinessException("Chỉ được đánh giá sau khi hoàn tất lưu trú (Đã trả phòng)");
         }
 
         if (reviewRepository.existsByBooking_Id(request.getBookingId())) {
-            throw new BusinessException("This booking has already been reviewed.");
+            throw new BusinessException("Đơn đặt phòng này đã được đánh giá");
+        }
+
+        String comment = request.getComment().trim();
+        if (comment.length() < 20 || comment.length() > 200) {
+            throw new BusinessException("Bình luận phải từ 20 đến 200 ký tự");
         }
 
         Review review = new Review();
@@ -52,11 +57,15 @@ public class ReviewService {
         review.setCustomer(currentUser);
         review.setRoom(booking.getRoom());
         review.setRating(request.getRating());
-        review.setComment(request.getComment());
+        review.setComment(comment);
         review.setStatus(Review.Status.PUBLISHED);
 
-        review = reviewRepository.save(review);
-        return MyReviewResponse.fromEntity(review);
+        Review saved = reviewRepository.save(review);
+
+        // Re-fetch with EntityGraph so MyReviewResponse can safely read room/property/images
+        return reviewRepository.findByIdAndCustomer_Id(saved.getId(), currentUser.getId())
+                .map(MyReviewResponse::fromEntity)
+                .orElseGet(() -> MyReviewResponse.fromEntity(saved));
     }
 
     @Transactional(readOnly = true)
@@ -73,40 +82,34 @@ public class ReviewService {
 
     @Transactional(readOnly = true)
     public MyReviewResponse getReviewByIdForCustomer(UUID id, User currentUser) {
-        Review review = reviewRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
-
-        if (!review.getCustomer().getId().equals(currentUser.getId())) {
-            throw new ForbiddenException("You do not have permission to view this review");
-        }
-
+        Review review = reviewRepository.findByIdAndCustomer_Id(id, currentUser.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đánh giá"));
         return MyReviewResponse.fromEntity(review);
     }
 
     @Transactional
     public MyReviewResponse updateReview(UUID id, UpdateReviewRequest request, User currentUser) {
-        Review review = reviewRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
+        Review review = reviewRepository.findByIdAndCustomer_Id(id, currentUser.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đánh giá"));
 
-        if (!review.getCustomer().getId().equals(currentUser.getId())) {
-            throw new ForbiddenException("You do not have permission to edit this review");
+        String comment = request.getComment().trim();
+        if (comment.length() < 20 || comment.length() > 200) {
+            throw new BusinessException("Bình luận phải từ 20 đến 200 ký tự");
         }
 
         review.setRating(request.getRating());
-        review.setComment(request.getComment());
+        review.setComment(comment);
 
-        review = reviewRepository.save(review);
-        return MyReviewResponse.fromEntity(review);
+        Review saved = reviewRepository.save(review);
+        return reviewRepository.findByIdAndCustomer_Id(saved.getId(), currentUser.getId())
+                .map(MyReviewResponse::fromEntity)
+                .orElseGet(() -> MyReviewResponse.fromEntity(saved));
     }
 
     @Transactional
     public void deleteReview(UUID id, User currentUser) {
-        Review review = reviewRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
-
-        if (!review.getCustomer().getId().equals(currentUser.getId())) {
-            throw new ForbiddenException("You do not have permission to delete this review");
-        }
+        Review review = reviewRepository.findByIdAndCustomer_Id(id, currentUser.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đánh giá"));
 
         reviewRepository.delete(review);
     }

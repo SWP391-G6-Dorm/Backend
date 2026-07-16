@@ -41,7 +41,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     @org.springframework.data.jpa.repository.Query("SELECT u FROM User u WHERE u.role = :role AND " +
             "(:status IS NULL OR u.status = :status) AND " +
             "(:search IS NULL OR LOWER(u.fullName) LIKE LOWER(CONCAT('%', :search, '%')) " +
-            "OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')))")
+            "OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')) " +
+            "OR LOWER(COALESCE(u.phone, '')) LIKE LOWER(CONCAT('%', :search, '%')))")
     Page<User> findByRoleWithFilters(
             @org.springframework.data.repository.query.Param("role") User.Role role,
             @org.springframework.data.repository.query.Param("status") User.Status status,

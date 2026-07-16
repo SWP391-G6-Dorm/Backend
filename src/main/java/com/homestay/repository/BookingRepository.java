@@ -4,6 +4,7 @@ import com.homestay.entity.Booking;
 import com.homestay.entity.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -18,6 +19,29 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     List<Booking> findByCustomerOrderByCreatedAtDesc(User customer);
 
+    /** SCR-23 — Active bookings for create-maintenance dropdown (JOIN FETCH room+property). */
+    @Query("""
+            SELECT DISTINCT b FROM Booking b
+            JOIN FETCH b.room r
+            JOIN FETCH r.property
+            WHERE b.customer.id = :customerId
+              AND b.status IN :statuses
+            ORDER BY b.createdAt DESC
+            """)
+    List<Booking> findActiveWithRoomPropertyByCustomerId(
+            @Param("customerId") UUID customerId,
+            @Param("statuses") List<Booking.Status> statuses);
+
+    /** SCR-23 — Load booking with room+property for create maintenance. */
+    @Query("""
+            SELECT b FROM Booking b
+            JOIN FETCH b.room r
+            JOIN FETCH r.property
+            JOIN FETCH b.customer
+            WHERE b.id = :id
+            """)
+    java.util.Optional<Booking> findByIdWithRoomAndCustomer(@Param("id") UUID id);
+
     Page<Booking> findByCustomerId(UUID customerId, Pageable pageable);
 
     Page<Booking> findByCustomerIdAndStatus(UUID customerId, Booking.Status status, Pageable pageable);
@@ -28,6 +52,26 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     Page<Booking> findByRoomIdOrderByCheckInDateDesc(UUID roomId, Pageable pageable);
 
     long countByCustomerId(UUID customerId);
+
+    /** SCR-51 — Batch count bookings per customer (Admin Directory). */
+    @Query("""
+            SELECT b.customer.id, COUNT(b)
+            FROM Booking b
+            WHERE b.customer.id IN :customerIds
+            GROUP BY b.customer.id
+            """)
+    List<Object[]> countBookingsByCustomerIds(@Param("customerIds") List<UUID> customerIds);
+
+    /** SCR-51 — Recent bookings for Customer Directory drawer. */
+    @EntityGraph(attributePaths = {"room", "room.property"})
+    @Query("""
+            SELECT b FROM Booking b
+            WHERE b.customer.id = :customerId
+            ORDER BY b.createdAt DESC
+            """)
+    Page<Booking> findByCustomerIdWithDetails(
+            @Param("customerId") UUID customerId,
+            Pageable pageable);
 
     @org.springframework.data.jpa.repository.Query("SELECT b FROM Booking b WHERE " +
            "(:status IS NULL OR b.status = :status) AND " +
@@ -132,4 +176,15 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             @Param("propertyId") UUID propertyId,
             @Param("from") java.time.LocalDateTime from,
             @Param("to") java.time.LocalDateTime to);
+
+    /** Hold timeout job — unpaid PENDING_DEPOSIT past holdExpiresAt. */
+    @Query("""
+        SELECT b FROM Booking b
+        JOIN FETCH b.room
+        JOIN FETCH b.customer
+        WHERE b.status = 'PENDING_DEPOSIT'
+          AND b.holdExpiresAt IS NOT NULL
+          AND b.holdExpiresAt < :now
+        """)
+    List<Booking> findExpiredPendingDeposits(@Param("now") java.time.LocalDateTime now);
 }

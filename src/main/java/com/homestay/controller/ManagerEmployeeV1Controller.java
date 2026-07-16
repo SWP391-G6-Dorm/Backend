@@ -170,9 +170,13 @@ public class ManagerEmployeeV1Controller {
 
             @PathVariable UUID id,
 
+            @RequestParam UUID propertyId,
+
             @Valid @RequestBody UpdateEmployeeRequest body) {
 
-        EmployeeSummaryResponse data = employeeManagementService.updateEmployee(currentUser, id, body);
+        EmployeeSummaryResponse data = employeeManagementService.updateEmployee(
+
+                currentUser, id, propertyId, body);
 
         return ResponseEntity.ok(ApiResponse.ok("Cập nhật nhân viên thành công", data));
 
@@ -190,9 +194,13 @@ public class ManagerEmployeeV1Controller {
 
             @PathVariable UUID id,
 
+            @RequestParam UUID propertyId,
+
             @Valid @RequestBody UpdateEmployeeStatusRequest body) {
 
-        EmployeeSummaryResponse data = employeeManagementService.updateEmployeeStatus(currentUser, id, body);
+        EmployeeSummaryResponse data = employeeManagementService.updateEmployeeStatus(
+
+                currentUser, id, propertyId, body);
 
         return ResponseEntity.ok(ApiResponse.ok("Cập nhật trạng thái thành công", data));
 

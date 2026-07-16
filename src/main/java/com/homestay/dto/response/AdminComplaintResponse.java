@@ -9,8 +9,9 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 /**
- * SCR-54 - Complaint Management (Admin). Field khop FE AdminComplaint.
- * bookingId luon "" vi entity Complaint khong co booking (FE goi .slice).
+ * SCR-54 - Complaint Management (Admin).
+ * Khớp cột: Ticket ID, Customer, Subject, Status, Submitted Date.
+ * Entity không có booking — không trả bookingId giả.
  */
 @Data
 @Builder
@@ -21,15 +22,16 @@ public class AdminComplaintResponse {
     private String id;
     private String customerId;
     private String customerName;
-    private String bookingId;
+    private String subject;
     private String description;
     private String status;
     private String resolution;
     private LocalDateTime createdAt;
+    private LocalDateTime resolvedAt;
 
     public static AdminComplaintResponse from(Complaint c) {
-        String customerId = "";
-        String customerName = "Khach vang lai";
+        String customerId = null;
+        String customerName = "Khách vãng lai";
         if (c.getUser() != null) {
             customerId = c.getUser().getId().toString();
             customerName = c.getUser().getFullName();
@@ -38,11 +40,12 @@ public class AdminComplaintResponse {
                 .id(c.getId().toString())
                 .customerId(customerId)
                 .customerName(customerName)
-                .bookingId("")
+                .subject(c.getSubject())
                 .description(c.getDescription())
                 .status(c.getStatus().name())
                 .resolution(c.getResolutionNotes())
                 .createdAt(c.getCreatedAt())
+                .resolvedAt(c.getResolvedAt())
                 .build();
     }
 }

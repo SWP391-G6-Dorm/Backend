@@ -38,22 +38,6 @@ public class ContractController {
         return ResponseEntity.ok(ApiResponse.ok(data));
     }
 
-    // ── CUSTOMER: lấy hợp đồng của chính mình ────────────────────────────────
-    // Phải đặt trước /{id} để Spring không nhầm "my" là một UUID
-    @GetMapping("/my")
-    @PreAuthorize("hasRole('CUSTOMER')")
-    public ResponseEntity<ApiResponse<PageResponse<ContractSummaryResponse>>> getMyContracts(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) String search,
-            @RequestParam(required = false) String sort,
-            @AuthenticationPrincipal User currentUser
-    ) {
-        PageResponse<ContractSummaryResponse> data = contractService.getMyContracts(currentUser, page, size, status, search, sort);
-        return ResponseEntity.ok(ApiResponse.ok(data));
-    }
-
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('MANAGER', 'CUSTOMER')")
     public ResponseEntity<ApiResponse<ContractDetailResponse>> getContractDetail(

@@ -1,6 +1,7 @@
 package com.homestay.controller;
 
 import com.homestay.dto.request.AdminUpdateUserRequest;
+import com.homestay.dto.response.AdminCustomerBookingSummaryResponse;
 import com.homestay.dto.response.AdminUserResponse;
 import com.homestay.dto.response.ApiResponse;
 import com.homestay.dto.response.PageResponse;
@@ -39,7 +40,9 @@ public class AdminUserController {
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        PageRequest pageable = PageRequest.of(safePage, safeSize, Sort.by("createdAt").descending());
         return ResponseEntity.ok(ApiResponse.ok(adminUserService.listUsers(role, status, keyword, pageable)));
     }
 
@@ -48,10 +51,20 @@ public class AdminUserController {
         return ResponseEntity.ok(ApiResponse.ok(adminUserService.getById(id)));
     }
 
+    /** SCR-51 — Lịch sử đặt phòng của Customer (Drawer). */
+    @GetMapping("/{id}/bookings")
+    public ResponseEntity<ApiResponse<PageResponse<AdminCustomerBookingSummaryResponse>>> customerBookings(
+            @PathVariable UUID id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "5") int size) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                adminUserService.listCustomerBookings(id, page, size)));
+    }
+
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<AdminUserResponse>> update(
             @PathVariable UUID id,
             @Valid @RequestBody AdminUpdateUserRequest req) {
-        return ResponseEntity.ok(ApiResponse.ok("Cap nhat user thanh cong", adminUserService.updateUser(id, req)));
+        return ResponseEntity.ok(ApiResponse.ok("Cập nhật user thành công", adminUserService.updateUser(id, req)));
     }
 }

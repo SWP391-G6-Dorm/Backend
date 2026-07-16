@@ -16,6 +16,7 @@ public class PromotionResponse {
     private String description;
     private String ctaText;
     private String ctaUrl;
+    private String imageUrl;
     private String colorTheme;
     private boolean isActive;
     private int sortOrder;
@@ -30,6 +31,7 @@ public class PromotionResponse {
         r.setDescription(p.getDescription());
         r.setCtaText(p.getCtaText());
         r.setCtaUrl(p.getCtaUrl());
+        r.setImageUrl(p.getImageUrl());
         r.setColorTheme(p.getColorTheme());
         r.setActive(p.isActive());
         r.setSortOrder(p.getSortOrder());
