@@ -79,6 +79,13 @@ public final class RoomPublicSpecifications {
             }
 
             if (checkIn != null && checkOut != null && checkOut.isAfter(checkIn)) {
+                // Date search: exclude ops-blocked rooms; availability = no overlapping booking
+                predicates.add(cb.not(root.get("status").in(
+                        Room.Status.MAINTENANCE,
+                        Room.Status.OUT_OF_SERVICE,
+                        Room.Status.PENDING_CLEANING,
+                        Room.Status.CLEANING_IN_PROGRESS
+                )));
                 predicates.add(isAvailableBetween(root, query, cb, checkIn, checkOut));
             }
 
@@ -100,10 +107,11 @@ public final class RoomPublicSpecifications {
                 cb.equal(booking.get("room"), root),
                 cb.not(booking.get("status").in(
                         Booking.Status.CANCELLED,
-                        Booking.Status.CHECKED_OUT
+                        Booking.Status.CHECKED_OUT,
+                        Booking.Status.NO_SHOW
                 )),
-                cb.lessThan(booking.get("checkInDate"), checkOut),
-                cb.greaterThan(booking.get("checkOutDate"), checkIn)
+                cb.lessThanOrEqualTo(booking.get("checkInDate"), checkOut),
+                cb.greaterThanOrEqualTo(booking.get("checkOutDate"), checkIn)
         );
         return cb.not(cb.exists(sub));
     }
