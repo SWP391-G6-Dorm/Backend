@@ -38,7 +38,7 @@ public class AdminDamageController {
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        PageRequest pageable = PageRequest.of(page, size);
         return ResponseEntity.ok(ApiResponse.ok(adminDamageService.listEscalated(pageable)));
     }
 
