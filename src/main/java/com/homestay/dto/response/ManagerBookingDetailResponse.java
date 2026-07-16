@@ -94,8 +94,19 @@ public class ManagerBookingDetailResponse {
         resp.setCanCheckIn(status == Booking.Status.CONFIRMED
                 && !booking.getCheckInDate().isAfter(today));
 
+        boolean remainingUnpaid = booking.getRemainingAmount() != null
+                && booking.getRemainingAmount().compareTo(java.math.BigDecimal.ZERO) > 0
+                && (resp.getPayments() == null || resp.getPayments().stream().noneMatch(p ->
+                "REMAINING_BALANCE".equals(p.getType()) && "PAID".equals(p.getStatus())));
+
+        boolean damageUnpaid = booking.getDamageFeeAmount() != null
+                && booking.getDamageFeeAmount().compareTo(java.math.BigDecimal.ZERO) > 0
+                && (resp.getPayments() == null || resp.getPayments().stream().noneMatch(p ->
+                "DAMAGE_FEE".equals(p.getType()) && "PAID".equals(p.getStatus())));
+
         switch (status) {
             case CHECKED_IN -> {
+                // First check-out action requests inspection (status → PENDING_INSPECTION)
                 resp.setCanCheckOut(true);
                 resp.setCheckOutBlockedReason(null);
             }
@@ -103,8 +114,19 @@ public class ManagerBookingDetailResponse {
                 boolean passed = inspection
                         .map(i -> i.getStatus() == RoomInspection.Status.PASSED)
                         .orElse(false);
-                resp.setCanCheckOut(passed);
-                resp.setCheckOutBlockedReason(passed ? null : "Đang chờ kiểm tra phòng");
+                if (!passed) {
+                    resp.setCanCheckOut(false);
+                    resp.setCheckOutBlockedReason("Đang chờ kiểm tra phòng");
+                } else if (remainingUnpaid) {
+                    resp.setCanCheckOut(false);
+                    resp.setCheckOutBlockedReason("Còn khoản Remaining chưa thanh toán");
+                } else if (damageUnpaid) {
+                    resp.setCanCheckOut(false);
+                    resp.setCheckOutBlockedReason("Còn phí thiệt hại chưa thanh toán");
+                } else {
+                    resp.setCanCheckOut(true);
+                    resp.setCheckOutBlockedReason(null);
+                }
             }
             case PENDING_DAMAGE_PAYMENT -> {
                 resp.setCanCheckOut(false);

@@ -37,7 +37,7 @@ public class ContractSummaryResponse {
         String storedPdf = c.getPdfUrl();
         String pdfUrl = (storedPdf != null && !storedPdf.isBlank())
                 ? storedPdf
-                : "/api/v1/contracts/" + c.getId() + "/pdf";
+                : "/api/contracts/" + c.getId() + "/pdf";
 
         return new ContractSummaryResponse(
                 c.getId(),

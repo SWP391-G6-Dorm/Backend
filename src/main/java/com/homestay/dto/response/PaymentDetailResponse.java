@@ -19,14 +19,18 @@ public class PaymentDetailResponse {
     private Payment.Method method;
     private BigDecimal amount;
     private Payment.Status status;
-    
+
+    private String orderRef;
+    private String gatewayTransactionId;
+    private String gatewayResponseCode;
+
     private String verifiedByName;
     private LocalDateTime verifiedAt;
     private LocalDateTime paidAt;
     private String verificationNote;
-    
+
     private String receiptUrl;
-    
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -43,6 +47,9 @@ public class PaymentDetailResponse {
                 .method(payment.getMethod())
                 .amount(payment.getAmount())
                 .status(payment.getStatus())
+                .orderRef(payment.getOrderRef())
+                .gatewayTransactionId(payment.getGatewayTransactionId())
+                .gatewayResponseCode(payment.getGatewayResponseCode())
                 .verifiedByName(verifiedByName)
                 .verifiedAt(payment.getVerifiedAt())
                 .paidAt(payment.getPaidAt())

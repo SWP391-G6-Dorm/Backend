@@ -36,6 +36,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -279,15 +280,26 @@ public class BookingService {
         return urls;
     }
 
-    /** SCR-37 — Manager check-in with verification (scoped). */
+    /**
+     * SCR-37 — Manager check-in with multipart CMND/CCCD (scoped).
+     * Remaining 60% MUST be PAID before check-in completes (online or desk collection).
+     */
     @org.springframework.transaction.annotation.Transactional
     public ManagerBookingDetailResponse markAsCheckedInForManager(
-            User manager, UUID id, ManagerCheckInRequest req) {
+            User manager,
+            UUID id,
+            MultipartFile idCardFront,
+            MultipartFile idCardBack,
+            boolean depositCollected,
+            boolean keyHandedOver,
+            String note) {
         Booking booking = findBookingOrThrow(id);
         scopeValidator.validateManagerAccess(manager, booking.getRoom().getProperty().getId());
 
-        validateIdDocumentUrls(req.getIdDocumentUrls());
-        if (!Boolean.TRUE.equals(req.getKeyHandedOver())) {
+        if (idCardFront == null || idCardFront.isEmpty() || idCardBack == null || idCardBack.isEmpty()) {
+            throw new BusinessException("Cần ảnh CMND/CCCD mặt trước và mặt sau");
+        }
+        if (!keyHandedOver) {
             throw new BusinessException("Phải xác nhận đã giao chìa khóa cho khách");
         }
 
@@ -299,18 +311,27 @@ public class BookingService {
         }
 
         List<Payment> payments = paymentRepository.findByBookingIdOrderByCreatedAtDesc(booking.getId());
-        boolean remainingUnpaid = booking.getRemainingAmount().compareTo(BigDecimal.ZERO) > 0
-                && payments.stream().noneMatch(p ->
-                p.getType() == Payment.Type.REMAINING_BALANCE && p.getStatus() == Payment.Status.PAID);
-        if (remainingUnpaid && !Boolean.TRUE.equals(req.getRemainingCollected())) {
-            throw new ConflictException("Chưa thu phần còn lại");
+        boolean remainingUnpaid = isRemainingUnpaid(booking, payments);
+        if (remainingUnpaid) {
+            if (!depositCollected) {
+                throw new ConflictException(
+                        "CHECKIN_DENIED_UNPAID: Chưa thu phần còn lại (Remaining Balance) — không thể Check-in");
+            }
+            recordRemainingPaidAtDesk(booking, manager, payments);
         }
+
+        List<String> docUrls = saveIdDocumentPair(booking.getId(), idCardFront, idCardBack);
 
         booking.setStatus(Booking.Status.CHECKED_IN);
         booking.getRoom().setStatus(Room.Status.OCCUPIED);
         bookingRepository.save(booking);
 
-        saveCheckVerification(booking, manager, BookingCheckVerification.Type.CHECK_IN, req);
+        ManagerCheckInRequest verification = new ManagerCheckInRequest();
+        verification.setIdDocumentUrls(docUrls);
+        verification.setKeyHandedOver(true);
+        verification.setRemainingCollected(remainingUnpaid || depositCollected);
+        verification.setNote(note);
+        saveCheckVerification(booking, manager, BookingCheckVerification.Type.CHECK_IN, verification);
 
         String roomName = booking.getRoom().getRoomNumber();
         notificationService.sendNotification(
@@ -324,7 +345,7 @@ public class BookingService {
         return buildManagerDetail(booking);
     }
 
-    /** SCR-37 — Manager check-out with inspection gate (scoped). */
+    /** SCR-37 — Manager check-out with inspection / payment gates (scoped). */
     @org.springframework.transaction.annotation.Transactional
     public ManagerBookingDetailResponse markAsCheckedOutForManager(
             User manager, UUID id, ManagerCheckOutRequest req) {
@@ -336,6 +357,7 @@ public class BookingService {
         }
 
         if (booking.getStatus() == Booking.Status.CHECKED_IN) {
+            // Status machine: Check-out requested → Pending Inspection (employee inspects before final check-out)
             booking.setStatus(Booking.Status.PENDING_INSPECTION);
             ensureInspectionPending(booking);
             bookingRepository.save(booking);
@@ -349,6 +371,7 @@ public class BookingService {
             if (inspection.getStatus() != RoomInspection.Status.PASSED) {
                 throw new ConflictException("Chưa hoàn tất kiểm tra phòng");
             }
+            assertPaymentsClearedForCheckOut(booking);
             booking.setStatus(Booking.Status.CHECKED_OUT);
             booking.getRoom().setStatus(Room.Status.PENDING_CLEANING);
             bookingRepository.save(booking);
@@ -373,6 +396,89 @@ public class BookingService {
         throw new BusinessException("Không thể trả phòng ở trạng thái hiện tại");
     }
 
+    private List<String> saveIdDocumentPair(UUID bookingId, MultipartFile front, MultipartFile back) {
+        validateIdDocumentFile(front);
+        validateIdDocumentFile(back);
+
+        Path uploadDir = Paths.get("uploads", "bookings", bookingId.toString()).toAbsolutePath();
+        try {
+            Files.createDirectories(uploadDir);
+        } catch (IOException e) {
+            throw new BusinessException("Không thể tạo thư mục upload");
+        }
+
+        List<String> urls = new ArrayList<>(2);
+        urls.add(storeIdDocument(uploadDir, bookingId, front, "front"));
+        urls.add(storeIdDocument(uploadDir, bookingId, back, "back"));
+        return urls;
+    }
+
+    private String storeIdDocument(Path uploadDir, UUID bookingId, MultipartFile file, String side) {
+        String savedName = side + "_" + UUID.randomUUID() + "_" + sanitizeFilename(file.getOriginalFilename());
+        Path target = uploadDir.resolve(savedName);
+        try {
+            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw new BusinessException("Không thể lưu ảnh giấy tờ");
+        }
+        return "/uploads/bookings/" + bookingId + "/" + savedName;
+    }
+
+    private static boolean isRemainingUnpaid(Booking booking, List<Payment> payments) {
+        if (booking.getRemainingAmount() == null
+                || booking.getRemainingAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            return false;
+        }
+        return payments.stream().noneMatch(p ->
+                p.getType() == Payment.Type.REMAINING_BALANCE && p.getStatus() == Payment.Status.PAID);
+    }
+
+    /**
+     * SCR-37 desk collection: mark/create Remaining Payment as PAID (CASH) so check-out gates stay consistent.
+     */
+    private void recordRemainingPaidAtDesk(Booking booking, User manager, List<Payment> existingPayments) {
+        BigDecimal amount = booking.getRemainingAmount();
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("Số tiền Remaining không hợp lệ");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        Optional<Payment> pendingRemaining = existingPayments.stream()
+                .filter(p -> p.getType() == Payment.Type.REMAINING_BALANCE
+                        && p.getStatus() == Payment.Status.PENDING)
+                .findFirst();
+
+        Payment payment = pendingRemaining.orElseGet(Payment::new);
+        if (pendingRemaining.isEmpty()) {
+            payment.setBooking(booking);
+            payment.setCustomer(booking.getCustomer());
+            payment.setType(Payment.Type.REMAINING_BALANCE);
+            payment.setAmount(amount);
+        }
+        payment.setMethod(Payment.Method.CASH);
+        payment.setStatus(Payment.Status.PAID);
+        payment.setPaidAt(now);
+        payment.setVerifiedBy(manager);
+        payment.setVerifiedAt(now);
+        payment.setVerificationNote("Thu Remaining tại quầy khi Check-in (SCR-37)");
+        paymentRepository.save(payment);
+    }
+
+    private void assertPaymentsClearedForCheckOut(Booking booking) {
+        List<Payment> payments = paymentRepository.findByBookingIdOrderByCreatedAtDesc(booking.getId());
+        if (isRemainingUnpaid(booking, payments)) {
+            throw new ConflictException("Còn khoản Remaining chưa thanh toán — không thể trả phòng");
+        }
+        if (booking.getDamageFeeAmount() != null
+                && booking.getDamageFeeAmount().compareTo(BigDecimal.ZERO) > 0) {
+            boolean damagePaid = payments.stream().anyMatch(p ->
+                    p.getType() == Payment.Type.DAMAGE_FEE && p.getStatus() == Payment.Status.PAID);
+            if (!damagePaid) {
+                throw new ConflictException("Còn phí thiệt hại chưa thanh toán — không thể trả phòng");
+            }
+        }
+    }
+
     private void validateIdDocumentFile(MultipartFile file) {
         if (file.getSize() > MAX_ID_DOC_BYTES) {
             throw new BusinessException("Ảnh giấy tờ không được vượt quá 5MB");
@@ -390,20 +496,6 @@ public class BookingService {
             return "document.jpg";
         }
         return original.replaceAll("[^a-zA-Z0-9._-]", "_");
-    }
-
-    private void validateIdDocumentUrls(List<String> urls) {
-        if (urls == null || urls.isEmpty()) {
-            throw new BusinessException("Cần ít nhất một ảnh giấy tờ");
-        }
-        if (urls.size() > 3) {
-            throw new BusinessException("Tối đa 3 ảnh giấy tờ");
-        }
-        for (String url : urls) {
-            if (url == null || !url.startsWith("/uploads/")) {
-                throw new BusinessException("URL ảnh giấy tờ không hợp lệ");
-            }
-        }
     }
 
     private void saveCheckVerification(
@@ -427,6 +519,7 @@ public class BookingService {
         record.setBooking(booking);
         record.setType(BookingCheckVerification.Type.CHECK_OUT);
         record.setKeyReturned(req.getKeyReturned());
+        record.setDepositRefunded(req.getDepositRefunded());
         record.setNote(req.getNote());
         record.setPerformedBy(manager);
         checkVerificationRepository.save(record);
