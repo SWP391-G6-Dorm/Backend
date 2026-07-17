@@ -45,6 +45,8 @@ public class ManagerBookingDetailResponse {
     private boolean canCheckIn;
     private boolean canCheckOut;
     private String checkOutBlockedReason;
+    /** True when damage fee exists and DAMAGE_FEE payment is PAID (status may still be PENDING_DAMAGE_PAYMENT until check-out). */
+    private boolean damageFeePaid;
 
     private List<BookingDetailResponse.PaymentInfo> payments;
 
@@ -77,6 +79,7 @@ public class ManagerBookingDetailResponse {
                 false,
                 false,
                 null,
+                false,
                 payments
         );
         applyActionFlags(resp, booking, inspection);
@@ -104,6 +107,10 @@ public class ManagerBookingDetailResponse {
                 && (resp.getPayments() == null || resp.getPayments().stream().noneMatch(p ->
                 "DAMAGE_FEE".equals(p.getType()) && "PAID".equals(p.getStatus())));
 
+        resp.setDamageFeePaid(booking.getDamageFeeAmount() != null
+                && booking.getDamageFeeAmount().compareTo(java.math.BigDecimal.ZERO) > 0
+                && !damageUnpaid);
+
         switch (status) {
             case CHECKED_IN -> {
                 // First check-out action requests inspection (status → PENDING_INSPECTION)
@@ -129,8 +136,16 @@ public class ManagerBookingDetailResponse {
                 }
             }
             case PENDING_DAMAGE_PAYMENT -> {
-                resp.setCanCheckOut(false);
-                resp.setCheckOutBlockedReason("Khách chưa thanh toán phí thiệt hại");
+                // Cho phép check-out khi đã PAID online, hoặc Manager thu tại quầy (damageFeeCollected).
+                if (remainingUnpaid) {
+                    resp.setCanCheckOut(false);
+                    resp.setCheckOutBlockedReason("Còn khoản Remaining chưa thanh toán");
+                } else {
+                    resp.setCanCheckOut(true);
+                    resp.setCheckOutBlockedReason(damageUnpaid
+                            ? "Cần thu phí thiệt hại tại quầy hoặc khách trả online trước khi Confirm Check-out"
+                            : null);
+                }
             }
             default -> {
                 resp.setCanCheckOut(false);

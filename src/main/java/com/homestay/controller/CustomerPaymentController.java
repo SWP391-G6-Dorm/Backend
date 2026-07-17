@@ -5,6 +5,7 @@ import com.homestay.entity.Payment;
 import com.homestay.repository.BookingRepository;
 import com.homestay.repository.PaymentRepository;
 import com.homestay.service.ContractService;
+import com.homestay.service.DamageFeeSettlementService;
 import com.homestay.service.VNPayService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,16 +32,19 @@ public class CustomerPaymentController {
     private final BookingRepository bookingRepository;
     private final PaymentRepository paymentRepository;
     private final ContractService contractService;
+    private final DamageFeeSettlementService damageFeeSettlementService;
 
     public CustomerPaymentController(
             VNPayService vnPayService,
             BookingRepository bookingRepository,
             PaymentRepository paymentRepository,
-            ContractService contractService) {
+            ContractService contractService,
+            DamageFeeSettlementService damageFeeSettlementService) {
         this.vnPayService = vnPayService;
         this.bookingRepository = bookingRepository;
         this.paymentRepository = paymentRepository;
         this.contractService = contractService;
+        this.damageFeeSettlementService = damageFeeSettlementService;
     }
 
     @GetMapping("/vnpay/return")
@@ -93,6 +97,8 @@ public class CustomerPaymentController {
                         } catch (Exception e) {
                             e.printStackTrace();
                         }
+                    } else if (payment.getType() == Payment.Type.DAMAGE_FEE) {
+                        damageFeeSettlementService.markDamageReportPaidForBooking(booking.getId());
                     }
                     paymentRepository.save(payment);
                 }
