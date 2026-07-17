@@ -59,6 +59,7 @@ public class EmployeeInspectionService {
     public EmployeeInspectionResponse pass(User employee, UUID id, EmployeeInspectionResultRequest request) {
         RoomInspection inspection = loadInScope(employee.getId(), id);
         guardOpen(inspection);
+        guardAssignee(inspection, employee);
         inspection.setStatus(RoomInspection.Status.PASSED);
         inspection.setInspectedBy(employee);
         inspection.setInspectedAt(LocalDateTime.now());
@@ -73,6 +74,7 @@ public class EmployeeInspectionService {
         }
         RoomInspection inspection = loadInScope(employee.getId(), id);
         guardOpen(inspection);
+        guardAssignee(inspection, employee);
         inspection.setStatus(RoomInspection.Status.FAILED_WITH_DAMAGE);
         inspection.setInspectedBy(employee);
         inspection.setInspectedAt(LocalDateTime.now());
@@ -94,6 +96,16 @@ public class EmployeeInspectionService {
         RoomInspection.Status status = inspection.getStatus();
         if (status != RoomInspection.Status.PENDING && status != RoomInspection.Status.IN_PROGRESS) {
             throw new BusinessException("Inspection da hoan tat");
+        }
+    }
+
+    /** Pass/Fail chỉ assignee (SCR-42/62). */
+    private void guardAssignee(RoomInspection inspection, User employee) {
+        if (inspection.getAssignedEmployee() == null) {
+            throw new BusinessException("Inspection must be assigned or claimed first.");
+        }
+        if (!inspection.getAssignedEmployee().getId().equals(employee.getId())) {
+            throw new BusinessException("Bạn không được gán kiểm tra phòng này");
         }
     }
 

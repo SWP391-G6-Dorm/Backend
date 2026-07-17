@@ -1,16 +1,20 @@
 package com.homestay.dto.request;
 
 import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.math.BigDecimal;
 
-/** SCR-53: body cho Admin co-approve damage report. */
+/**
+ * SCR-53: Admin co-approve damage report.
+ * Docs list body as {@code { "note" }}; {@code approvedFee} is the final fee Admin confirms
+ * (defaults to Manager-proposed approvedAmount when omitted).
+ */
 @Data
 public class CoApproveDamageRequest {
 
-    @NotNull(message = "approvedFee bat buoc")
-    @DecimalMin(value = "0", inclusive = false, message = "approvedFee phai lon hon 0")
+    @DecimalMin(value = "0", inclusive = false, message = "approvedFee phải lớn hơn 0")
     private BigDecimal approvedFee;
+
+    private String note;
 }

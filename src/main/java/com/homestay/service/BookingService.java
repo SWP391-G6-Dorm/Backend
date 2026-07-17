@@ -63,6 +63,7 @@ public class BookingService {
     private final RoomInspectionRepository roomInspectionRepository;
     private final BookingCheckVerificationRepository checkVerificationRepository;
     private final HousekeepingTaskService housekeepingTaskService;
+    private final DamageFeeSettlementService damageFeeSettlementService;
     private final long holdTimeoutMinutes;
 
     private static final long MAX_ID_DOC_BYTES = 5L * 1024 * 1024;
@@ -77,6 +78,7 @@ public class BookingService {
                           RoomInspectionRepository roomInspectionRepository,
                           BookingCheckVerificationRepository checkVerificationRepository,
                           HousekeepingTaskService housekeepingTaskService,
+                          DamageFeeSettlementService damageFeeSettlementService,
                           @org.springframework.beans.factory.annotation.Value("${app.booking.hold-timeout-minutes:10}") long holdTimeoutMinutes) {
         this.bookingRepository = bookingRepository;
         this.notificationService = notificationService;
@@ -88,6 +90,7 @@ public class BookingService {
         this.roomInspectionRepository = roomInspectionRepository;
         this.checkVerificationRepository = checkVerificationRepository;
         this.housekeepingTaskService = housekeepingTaskService;
+        this.damageFeeSettlementService = damageFeeSettlementService;
         this.holdTimeoutMinutes = holdTimeoutMinutes > 0 ? holdTimeoutMinutes : 10;
     }
 
@@ -371,29 +374,86 @@ public class BookingService {
             if (inspection.getStatus() != RoomInspection.Status.PASSED) {
                 throw new ConflictException("Chưa hoàn tất kiểm tra phòng");
             }
+            settleDamageFeeAtDeskIfRequested(booking, manager, req);
             assertPaymentsClearedForCheckOut(booking);
-            booking.setStatus(Booking.Status.CHECKED_OUT);
-            booking.getRoom().setStatus(Room.Status.PENDING_CLEANING);
-            bookingRepository.save(booking);
-            housekeepingTaskService.onBookingCheckedOut(booking);
-            saveCheckOutVerification(booking, manager, req);
-
-            String roomName = booking.getRoom().getRoomNumber();
-            notificationService.sendNotification(
-                    booking.getCustomer().getId(),
-                    com.homestay.entity.Notification.Type.BOOKING_CONFIRMED,
-                    "Đã trả phòng",
-                    "Cảm ơn bạn đã lưu trú tại " + roomName + ". Hẹn gặp lại!",
-                    booking.getId(), "Booking"
-            );
-            return buildManagerDetail(booking);
+            return finalizeCheckedOut(booking, manager, req);
         }
 
         if (booking.getStatus() == Booking.Status.PENDING_DAMAGE_PAYMENT) {
-            throw new ConflictException("Khách chưa thanh toán phí thiệt hại");
+            settleDamageFeeAtDeskIfRequested(booking, manager, req);
+            assertPaymentsClearedForCheckOut(booking);
+            return finalizeCheckedOut(booking, manager, req);
         }
 
         throw new BusinessException("Không thể trả phòng ở trạng thái hiện tại");
+    }
+
+    private ManagerBookingDetailResponse finalizeCheckedOut(
+            Booking booking, User manager, ManagerCheckOutRequest req) {
+        booking.setStatus(Booking.Status.CHECKED_OUT);
+        booking.getRoom().setStatus(Room.Status.PENDING_CLEANING);
+        bookingRepository.save(booking);
+        housekeepingTaskService.onBookingCheckedOut(booking);
+        saveCheckOutVerification(booking, manager, req);
+
+        String roomName = booking.getRoom().getRoomNumber();
+        notificationService.sendNotification(
+                booking.getCustomer().getId(),
+                com.homestay.entity.Notification.Type.BOOKING_CONFIRMED,
+                "Đã trả phòng",
+                "Cảm ơn bạn đã lưu trú tại " + roomName + ". Hẹn gặp lại!",
+                booking.getId(), "Booking"
+        );
+        return buildManagerDetail(booking);
+    }
+
+    /**
+     * SCR-37 desk: thu phí thiệt hại tại quầy → Payment DAMAGE_FEE = PAID (CASH).
+     */
+    private void settleDamageFeeAtDeskIfRequested(
+            Booking booking, User manager, ManagerCheckOutRequest req) {
+        List<Payment> payments = paymentRepository.findByBookingIdOrderByCreatedAtDesc(booking.getId());
+        boolean damageUnpaid = booking.getDamageFeeAmount() != null
+                && booking.getDamageFeeAmount().compareTo(BigDecimal.ZERO) > 0
+                && payments.stream().noneMatch(p ->
+                p.getType() == Payment.Type.DAMAGE_FEE && p.getStatus() == Payment.Status.PAID);
+
+        if (!damageUnpaid) {
+            return;
+        }
+        if (!Boolean.TRUE.equals(req.getDamageFeeCollected())) {
+            throw new ConflictException("Khách chưa thanh toán phí thiệt hại");
+        }
+        recordDamageFeePaidAtDesk(booking, manager, payments);
+    }
+
+    private void recordDamageFeePaidAtDesk(Booking booking, User manager, List<Payment> existingPayments) {
+        BigDecimal amount = booking.getDamageFeeAmount();
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("Số tiền phí thiệt hại không hợp lệ");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        Optional<Payment> pendingDamage = existingPayments.stream()
+                .filter(p -> p.getType() == Payment.Type.DAMAGE_FEE
+                        && p.getStatus() == Payment.Status.PENDING)
+                .findFirst();
+
+        Payment payment = pendingDamage.orElseGet(Payment::new);
+        if (pendingDamage.isEmpty()) {
+            payment.setBooking(booking);
+            payment.setCustomer(booking.getCustomer());
+            payment.setType(Payment.Type.DAMAGE_FEE);
+            payment.setAmount(amount);
+        }
+        payment.setMethod(Payment.Method.CASH);
+        payment.setStatus(Payment.Status.PAID);
+        payment.setPaidAt(now);
+        payment.setVerifiedBy(manager);
+        payment.setVerifiedAt(now);
+        payment.setVerificationNote("Thu phí thiệt hại tại quầy khi Check-out (SCR-37)");
+        paymentRepository.save(payment);
+        damageFeeSettlementService.markDamageReportPaidForBooking(booking.getId());
     }
 
     private List<String> saveIdDocumentPair(UUID bookingId, MultipartFile front, MultipartFile back) {
@@ -570,6 +630,11 @@ public class BookingService {
                         .map(BookingDetailResponse.PaymentInfo::fromEntity)
                         .toList()
         );
+        boolean damageFeePaid = booking.getDamageFeeAmount() != null
+                && booking.getDamageFeeAmount().compareTo(BigDecimal.ZERO) > 0
+                && response.getPayments().stream().anyMatch(p ->
+                "DAMAGE_FEE".equals(p.getType()) && "PAID".equals(p.getStatus()));
+        response.setDamageFeePaid(damageFeePaid);
         return response;
     }
 

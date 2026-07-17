@@ -61,7 +61,7 @@ public interface DamageReportRepository extends JpaRepository<DamageReport, UUID
             """)
     Optional<DamageReport> findDetailById(@Param("id") UUID id);
 
-    // SCR-53: hang doi cho Admin co-approve = escalated (>5M) va dang PENDING_APPROVAL.
+    // SCR-53: hang doi Admin = escalated (>5M) + PENDING_APPROVAL + Manager da review/escalate.
     // JOIN FETCH to-one tranh N+1; enum truyen qua param; countQuery rieng khong JOIN FETCH.
     @Query(value = """
             SELECT dr FROM DamageReport dr
@@ -70,14 +70,17 @@ public interface DamageReportRepository extends JpaRepository<DamageReport, UUID
             JOIN FETCH i.room r
             LEFT JOIN FETCH i.inspectedBy ins
             JOIN FETCH dr.booking b
+            LEFT JOIN FETCH dr.approvedBy ab
             WHERE dr.requiresAdminEscalation = true
               AND dr.status = :pending
+              AND dr.approvedBy IS NOT NULL
             ORDER BY dr.createdAt DESC
             """,
             countQuery = """
             SELECT COUNT(dr) FROM DamageReport dr
             WHERE dr.requiresAdminEscalation = true
               AND dr.status = :pending
+              AND dr.approvedBy IS NOT NULL
             """)
     Page<DamageReport> findEscalatedForAdmin(
             @Param("pending") DamageReport.Status pending,
@@ -103,4 +106,6 @@ public interface DamageReportRepository extends JpaRepository<DamageReport, UUID
 
     // SCR-64: check inspection already has a damage report (unique constraint enforcement)
     boolean existsByInspection_Id(UUID inspectionId);
+
+    Optional<DamageReport> findFirstByBooking_IdAndStatus(UUID bookingId, DamageReport.Status status);
 }

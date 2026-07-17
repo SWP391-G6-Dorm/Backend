@@ -40,6 +40,7 @@ public class PaymentService {
     private final VNPayConfig vnPayConfig;
     private final ReportPropertyScopeValidator scopeValidator;
     private final ManagerPropertyAssignmentRepository assignmentRepository;
+    private final DamageFeeSettlementService damageFeeSettlementService;
 
     public PaymentService(PaymentRepository paymentRepository,
                           BookingRepository bookingRepository,
@@ -47,7 +48,8 @@ public class PaymentService {
                           VNPayService vnPayService,
                           VNPayConfig vnPayConfig,
                           ReportPropertyScopeValidator scopeValidator,
-                          ManagerPropertyAssignmentRepository assignmentRepository) {
+                          ManagerPropertyAssignmentRepository assignmentRepository,
+                          DamageFeeSettlementService damageFeeSettlementService) {
         this.paymentRepository = paymentRepository;
         this.bookingRepository = bookingRepository;
         this.contractService = contractService;
@@ -55,6 +57,7 @@ public class PaymentService {
         this.vnPayConfig = vnPayConfig;
         this.scopeValidator = scopeValidator;
         this.assignmentRepository = assignmentRepository;
+        this.damageFeeSettlementService = damageFeeSettlementService;
     }
 
     @Transactional
@@ -79,6 +82,16 @@ public class PaymentService {
                     && booking.getStatus() != Booking.Status.CHECKED_IN) {
                 throw new BusinessException("Booking không đủ điều kiện thanh toán phần còn lại");
             }
+        } else if ("DAMAGE_FEE".equals(type)) {
+            if (booking.getDamageFeeAmount() == null
+                    || booking.getDamageFeeAmount().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BusinessException("Booking không có phí thiệt hại cần thanh toán");
+            }
+            boolean alreadyPaid = paymentRepository.findByBookingIdOrderByCreatedAtDesc(booking.getId()).stream()
+                    .anyMatch(p -> p.getType() == Payment.Type.DAMAGE_FEE && p.getStatus() == Payment.Status.PAID);
+            if (alreadyPaid) {
+                throw new BusinessException("Phí thiệt hại đã được thanh toán");
+            }
         } else {
             throw new IllegalArgumentException("Loại thanh toán không hợp lệ");
         }
@@ -87,22 +100,43 @@ public class PaymentService {
         BigDecimal amountBd;
         if ("DEPOSIT".equals(type)) {
             amountBd = booking.getDepositAmount();
-        } else {
+        } else if ("REMAINING_BALANCE".equals(type)) {
             amountBd = booking.getRemainingAmount();
+        } else {
+            amountBd = booking.getDamageFeeAmount();
         }
         if (amountBd == null || amountBd.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException("Số tiền thanh toán không hợp lệ");
         }
         long amount = amountBd.setScale(0, java.math.RoundingMode.HALF_UP).longValue();
 
-        Payment payment = new Payment();
-        payment.setBooking(booking);
-        payment.setCustomer(currentUser);
-        payment.setType(Payment.Type.valueOf(type));
-        payment.setMethod(Payment.Method.VNPAY);
-        payment.setAmount(amountBd);
-        payment.setStatus(Payment.Status.PENDING);
-        payment = paymentRepository.save(payment);
+        Payment payment;
+        if ("DAMAGE_FEE".equals(type)) {
+            payment = paymentRepository.findByBookingIdOrderByCreatedAtDesc(booking.getId()).stream()
+                    .filter(p -> p.getType() == Payment.Type.DAMAGE_FEE && p.getStatus() == Payment.Status.PENDING)
+                    .findFirst()
+                    .orElse(null);
+            if (payment == null) {
+                payment = new Payment();
+                payment.setBooking(booking);
+                payment.setCustomer(currentUser);
+                payment.setType(Payment.Type.DAMAGE_FEE);
+                payment.setAmount(amountBd);
+                payment.setStatus(Payment.Status.PENDING);
+            }
+            payment.setMethod(Payment.Method.VNPAY);
+            payment.setAmount(amountBd);
+            payment = paymentRepository.save(payment);
+        } else {
+            payment = new Payment();
+            payment.setBooking(booking);
+            payment.setCustomer(currentUser);
+            payment.setType(Payment.Type.valueOf(type));
+            payment.setMethod(Payment.Method.VNPAY);
+            payment.setAmount(amountBd);
+            payment.setStatus(Payment.Status.PENDING);
+            payment = paymentRepository.save(payment);
+        }
 
         String orderInfo = "Thanh toan " + type + " cho Booking " + booking.getId();
         String paymentUrl = vnPayService.createOrder(
@@ -272,6 +306,9 @@ public class PaymentService {
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
+            } else if (payment.getType() == Payment.Type.DAMAGE_FEE) {
+                paymentRepository.save(payment);
+                damageFeeSettlementService.markDamageReportPaidForBooking(booking.getId());
             } else {
                 paymentRepository.save(payment);
             }
