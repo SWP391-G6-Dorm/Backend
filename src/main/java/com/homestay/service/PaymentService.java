@@ -40,6 +40,7 @@ public class PaymentService {
     private final VNPayConfig vnPayConfig;
     private final ReportPropertyScopeValidator scopeValidator;
     private final ManagerPropertyAssignmentRepository assignmentRepository;
+    private final DamageFeeSettlementService damageFeeSettlementService;
 
     public PaymentService(PaymentRepository paymentRepository,
                           BookingRepository bookingRepository,
@@ -47,7 +48,8 @@ public class PaymentService {
                           VNPayService vnPayService,
                           VNPayConfig vnPayConfig,
                           ReportPropertyScopeValidator scopeValidator,
-                          ManagerPropertyAssignmentRepository assignmentRepository) {
+                          ManagerPropertyAssignmentRepository assignmentRepository,
+                          DamageFeeSettlementService damageFeeSettlementService) {
         this.paymentRepository = paymentRepository;
         this.bookingRepository = bookingRepository;
         this.contractService = contractService;
@@ -55,6 +57,7 @@ public class PaymentService {
         this.vnPayConfig = vnPayConfig;
         this.scopeValidator = scopeValidator;
         this.assignmentRepository = assignmentRepository;
+        this.damageFeeSettlementService = damageFeeSettlementService;
     }
 
     @Transactional
@@ -79,6 +82,16 @@ public class PaymentService {
                     && booking.getStatus() != Booking.Status.CHECKED_IN) {
                 throw new BusinessException("Booking không đủ điều kiện thanh toán phần còn lại");
             }
+        } else if ("DAMAGE_FEE".equals(type)) {
+            if (booking.getDamageFeeAmount() == null
+                    || booking.getDamageFeeAmount().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BusinessException("Booking không có phí thiệt hại cần thanh toán");
+            }
+            boolean alreadyPaid = paymentRepository.findByBookingIdOrderByCreatedAtDesc(booking.getId()).stream()
+                    .anyMatch(p -> p.getType() == Payment.Type.DAMAGE_FEE && p.getStatus() == Payment.Status.PAID);
+            if (alreadyPaid) {
+                throw new BusinessException("Phí thiệt hại đã được thanh toán");
+            }
         } else {
             throw new IllegalArgumentException("Loại thanh toán không hợp lệ");
         }
@@ -87,22 +100,43 @@ public class PaymentService {
         BigDecimal amountBd;
         if ("DEPOSIT".equals(type)) {
             amountBd = booking.getDepositAmount();
-        } else {
+        } else if ("REMAINING_BALANCE".equals(type)) {
             amountBd = booking.getRemainingAmount();
+        } else {
+            amountBd = booking.getDamageFeeAmount();
         }
         if (amountBd == null || amountBd.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException("Số tiền thanh toán không hợp lệ");
         }
         long amount = amountBd.setScale(0, java.math.RoundingMode.HALF_UP).longValue();
 
-        Payment payment = new Payment();
-        payment.setBooking(booking);
-        payment.setCustomer(currentUser);
-        payment.setType(Payment.Type.valueOf(type));
-        payment.setMethod(Payment.Method.VNPAY);
-        payment.setAmount(amountBd);
-        payment.setStatus(Payment.Status.PENDING);
-        paymentRepository.save(payment);
+        Payment payment;
+        if ("DAMAGE_FEE".equals(type)) {
+            payment = paymentRepository.findByBookingIdOrderByCreatedAtDesc(booking.getId()).stream()
+                    .filter(p -> p.getType() == Payment.Type.DAMAGE_FEE && p.getStatus() == Payment.Status.PENDING)
+                    .findFirst()
+                    .orElse(null);
+            if (payment == null) {
+                payment = new Payment();
+                payment.setBooking(booking);
+                payment.setCustomer(currentUser);
+                payment.setType(Payment.Type.DAMAGE_FEE);
+                payment.setAmount(amountBd);
+                payment.setStatus(Payment.Status.PENDING);
+            }
+            payment.setMethod(Payment.Method.VNPAY);
+            payment.setAmount(amountBd);
+            payment = paymentRepository.save(payment);
+        } else {
+            payment = new Payment();
+            payment.setBooking(booking);
+            payment.setCustomer(currentUser);
+            payment.setType(Payment.Type.valueOf(type));
+            payment.setMethod(Payment.Method.VNPAY);
+            payment.setAmount(amountBd);
+            payment.setStatus(Payment.Status.PENDING);
+            payment = paymentRepository.save(payment);
+        }
 
         String orderInfo = "Thanh toan " + type + " cho Booking " + booking.getId();
         String paymentUrl = vnPayService.createOrder(
@@ -201,8 +235,9 @@ public class PaymentService {
         Payment payment = paymentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Payment không tồn tại"));
 
-        boolean isManager = currentUser.getRole() == User.Role.MANAGER;
-        if (!isManager && !payment.getCustomer().getId().equals(currentUser.getId())) {
+        if (currentUser.getRole() == User.Role.MANAGER) {
+            assertManagerOwnsPayment(currentUser, payment);
+        } else if (!payment.getCustomer().getId().equals(currentUser.getId())) {
             throw new ForbiddenException("Không có quyền xem thanh toán này");
         }
 
@@ -218,34 +253,62 @@ public class PaymentService {
         Payment payment = paymentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Payment không tồn tại"));
 
+        assertManagerOwnsPayment(currentUser, payment);
+
         if (payment.getStatus() != Payment.Status.PENDING) {
-            throw new IllegalArgumentException("Chỉ có thể duyệt thanh toán đang ở trạng thái PENDING");
+            throw new BusinessException("Chỉ có thể duyệt thanh toán đang ở trạng thái PENDING");
         }
 
-        payment.setStatus(request.getStatus());
+        Payment.Status target = request.getStatus();
+        if (target != Payment.Status.PAID && target != Payment.Status.FAILED) {
+            throw new BusinessException("Trạng thái duyệt phải là PAID hoặc FAILED");
+        }
+
+        if (target == Payment.Status.FAILED
+                && (request.getNote() == null || request.getNote().isBlank())) {
+            throw new BusinessException("Vui lòng nhập lý do từ chối");
+        }
+
+        // Bank transfer: must have PaymentReceipt before Approve (FR-12 / security)
+        if (target == Payment.Status.PAID
+                && payment.getMethod() == Payment.Method.BANK_TRANSFER) {
+            if (payment.getReceipt() == null
+                    || payment.getReceipt().getFileUrl() == null
+                    || payment.getReceipt().getFileUrl().isBlank()) {
+                throw new BusinessException(
+                        "Phải có biên lai (PaymentReceipt) trước khi duyệt chuyển khoản");
+            }
+        }
+
+        // VNPay is auto-confirmed via gateway — managers should not manually Approve VNPay
+        if (target == Payment.Status.PAID && payment.getMethod() == Payment.Method.VNPAY) {
+            throw new BusinessException("Thanh toán VNPay được xác nhận tự động, không duyệt thủ công");
+        }
+
+        payment.setStatus(target);
         payment.setVerificationNote(request.getNote());
         payment.setVerifiedBy(currentUser);
         payment.setVerifiedAt(LocalDateTime.now());
-        
-        if (request.getStatus() == Payment.Status.PAID) {
+
+        if (target == Payment.Status.PAID) {
             payment.setPaidAt(LocalDateTime.now());
             Booking booking = payment.getBooking();
-            
-            // Theo AGENTS.md: Deposit xong thì Booking -> CONFIRMED và sinh Hợp đồng
+
             if (payment.getType() == Payment.Type.DEPOSIT) {
                 if (booking.getStatus() == Booking.Status.PENDING_DEPOSIT) {
                     booking.setStatus(Booking.Status.CONFIRMED);
                     bookingRepository.save(booking);
                 }
                 paymentRepository.save(payment);
-                
-                // Tự động sinh PDF và gửi Email hợp đồng
+
                 try {
                     contractService.autoGenerateAndSendContract(booking.getId(), currentUser);
                 } catch (Exception e) {
-                    // Log error if needed, but don't rollback payment verification
                     e.printStackTrace();
                 }
+            } else if (payment.getType() == Payment.Type.DAMAGE_FEE) {
+                paymentRepository.save(payment);
+                damageFeeSettlementService.markDamageReportPaidForBooking(booking.getId());
             } else {
                 paymentRepository.save(payment);
             }
@@ -254,6 +317,11 @@ public class PaymentService {
         }
 
         return PaymentDetailResponse.fromEntity(payment);
+    }
+
+    private void assertManagerOwnsPayment(User manager, Payment payment) {
+        UUID propertyId = payment.getBooking().getRoom().getProperty().getId();
+        scopeValidator.validateManagerAccess(manager, propertyId);
     }
 
     private Pageable buildPageable(int page, int size, String sort) {

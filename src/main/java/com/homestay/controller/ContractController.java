@@ -68,7 +68,7 @@ public class ContractController {
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_PDF);
-        headers.setContentDispositionFormData("attachment", "Contract_" + id + ".pdf");
+        headers.set(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"Contract_" + id + ".pdf\"");
         headers.setCacheControl("must-revalidate, post-check=0, pre-check=0");
 
         return ResponseEntity.ok()

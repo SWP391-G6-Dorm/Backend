@@ -1,5 +1,6 @@
 package com.homestay.service;
 
+import com.homestay.dto.request.CoApproveDamageRequest;
 import com.homestay.dto.response.AdminDamageReportResponse;
 import com.homestay.dto.response.PageResponse;
 import com.homestay.entity.Attachment;
@@ -27,8 +28,8 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * SCR-53 - Damage Escalation (Admin). Read hang doi escalated + co-approve.
- * KHONG dung SCR-43 (Manager) / SCR-64-63 (Employee) / luong Customer.
+ * SCR-53 — Damage Escalation (Admin). Queue escalated reports + co-approve.
+ * Does not own SCR-43 (Manager), SCR-64 (Employee), or Customer dispute/pay.
  */
 @Service
 @RequiredArgsConstructor
@@ -39,13 +40,19 @@ public class AdminDamageService {
     private final DamageReportRepository damageReportRepository;
     private final AttachmentRepository attachmentRepository;
     private final NotificationService notificationService;
+    private final DamageFeeSettlementService damageFeeSettlementService;
 
     @Transactional(readOnly = true)
     public PageResponse<AdminDamageReportResponse> listEscalated(Pageable pageable) {
         Page<DamageReport> page = damageReportRepository.findEscalatedForAdmin(
                 DamageReport.Status.PENDING_APPROVAL, pageable);
 
-        // Gom tat ca damage item id cua ca trang -> 1 query attachment (tranh N+1).
+        page.getContent().forEach(dr -> {
+            if (dr.getItems() != null) {
+                dr.getItems().size();
+            }
+        });
+
         List<UUID> allItemIds = page.getContent().stream()
                 .flatMap(dr -> safeItems(dr).stream())
                 .map(DamageItem::getId)
@@ -71,24 +78,45 @@ public class AdminDamageService {
     }
 
     @Transactional
-    public AdminDamageReportResponse coApprove(UUID id, BigDecimal approvedFee, User admin) {
+    public AdminDamageReportResponse coApprove(UUID id, CoApproveDamageRequest req, User admin) {
         DamageReport dr = damageReportRepository.findDetailById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Khong tim thay bao cao hu hai"));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy báo cáo hư hại"));
 
         if (!Boolean.TRUE.equals(dr.getRequiresAdminEscalation())
                 || dr.getStatus() != DamageReport.Status.PENDING_APPROVAL) {
-            throw new BusinessException("Bao cao khong o trang thai cho Admin duyet");
+            throw new BusinessException("Báo cáo không ở trạng thái chờ Admin duyệt");
+        }
+        if (dr.getApprovedBy() == null) {
+            throw new BusinessException("Báo cáo chưa được Manager escalate — không thể co-approve");
+        }
+        if (dr.getAdminApprover() != null) {
+            throw new BusinessException("Báo cáo đã được Admin duyệt");
+        }
+
+        BigDecimal fee = req.getApprovedFee() != null
+                ? req.getApprovedFee()
+                : dr.getApprovedAmount();
+        if (fee == null || fee.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("Số tiền duyệt phải lớn hơn 0");
         }
 
         dr.setStatus(DamageReport.Status.APPROVED);
         dr.setAdminApprover(admin);
-        dr.setApprovedAmount(approvedFee);
+        dr.setApprovedAmount(fee);
         if (dr.getApprovedAt() == null) {
             dr.setApprovedAt(LocalDateTime.now());
         }
+        if (req.getNote() != null && !req.getNote().isBlank()) {
+            String existing = dr.getNote() != null ? dr.getNote().trim() : "";
+            String adminNote = req.getNote().trim();
+            dr.setNote(existing.isEmpty()
+                    ? "[Admin] " + adminNote
+                    : existing + "\n[Admin] " + adminNote);
+        }
+
+        damageFeeSettlementService.applyApprovedFee(dr, fee);
 
         DamageReport saved = damageReportRepository.save(dr);
-
         notifyCustomer(saved);
 
         return AdminDamageReportResponse.from(saved, collectAttachments(saved, null));
@@ -98,7 +126,6 @@ public class AdminDamageService {
         return dr.getItems() == null ? Collections.emptyList() : dr.getItems();
     }
 
-    // Gop attachment cua tat ca item thuoc report. Neu map == null (co-approve don le) -> query truc tiep.
     private List<Attachment> collectAttachments(DamageReport dr, Map<UUID, List<Attachment>> attByItemId) {
         List<UUID> itemIds = safeItems(dr).stream().map(DamageItem::getId).toList();
         if (itemIds.isEmpty()) {
@@ -122,8 +149,8 @@ public class AdminDamageService {
             notificationService.sendNotification(
                     dr.getBooking().getCustomer().getId(),
                     Notification.Type.SYSTEM,
-                    "Cap nhat bao cao hu hai",
-                    "Phi boi thuong da duoc Admin duyet.",
+                    "Cập nhật báo cáo hư hại",
+                    "Phí bồi thường đã được Admin duyệt. Vui lòng thanh toán phí thiệt hại. Bạn có 24 giờ để Dispute nếu không đồng ý.",
                     dr.getId(),
                     "DamageReport");
         }

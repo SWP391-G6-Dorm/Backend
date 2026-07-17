@@ -31,13 +31,4 @@ public class StructureTreeV1Controller {
         PropertyStructureResponse data = floorService.getStructureForManager(currentUser, propertyId);
         return ResponseEntity.ok(ApiResponse.ok(data));
     }
-
-    @GetMapping("/{propertyId}/structure")
-    @PreAuthorize("hasRole('MANAGER')")
-    public ResponseEntity<ApiResponse<PropertyStructureResponse>> getStructure(
-            @PathVariable UUID propertyId,
-            @AuthenticationPrincipal User currentUser) {
-        PropertyStructureResponse data = floorService.getStructureForManager(currentUser, propertyId);
-        return ResponseEntity.ok(ApiResponse.ok(data));
-    }
 }

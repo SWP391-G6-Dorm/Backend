@@ -80,7 +80,8 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     Page<Booking> findAllWithFilters(@Param("status") Booking.Status status, @Param("search") String search, Pageable pageable);
 
     /** SCR-34 — Manager list scoped by assigned properties. */
-    @Query("""
+    @Query(
+        value = """
         SELECT b FROM Booking b
         JOIN b.room r
         JOIN b.customer c
@@ -93,7 +94,22 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
                OR LOWER(CAST(b.id AS string)) LIKE LOWER(CONCAT('%', :search, '%')))
           AND (:checkInFrom IS NULL OR b.checkInDate >= :checkInFrom)
           AND (:checkInTo IS NULL OR b.checkInDate <= :checkInTo)
-        """)
+        """,
+        countQuery = """
+        SELECT COUNT(b) FROM Booking b
+        JOIN b.room r
+        JOIN b.customer c
+        WHERE r.property.id IN :propertyIds
+          AND (:status IS NULL OR b.status = :status)
+          AND (:search IS NULL OR
+               LOWER(c.fullName) LIKE LOWER(CONCAT('%', :search, '%'))
+               OR LOWER(COALESCE(c.phone, '')) LIKE LOWER(CONCAT('%', :search, '%'))
+               OR LOWER(r.roomNumber) LIKE LOWER(CONCAT('%', :search, '%'))
+               OR LOWER(CAST(b.id AS string)) LIKE LOWER(CONCAT('%', :search, '%')))
+          AND (:checkInFrom IS NULL OR b.checkInDate >= :checkInFrom)
+          AND (:checkInTo IS NULL OR b.checkInDate <= :checkInTo)
+        """
+    )
     Page<Booking> findForManagerWithFilters(
             @Param("propertyIds") List<UUID> propertyIds,
             @Param("status") Booking.Status status,

@@ -18,16 +18,17 @@ public interface RoomInspectionRepository extends JpaRepository<RoomInspection, 
 
     Optional<RoomInspection> findByBookingId(UUID bookingId);
 
-    // SCR-42: Danh sach kiem tra phong cho Manager, scope theo property, filter status + search room number.
-    // JOIN FETCH cac quan he single-valued de tranh N+1; enum truyen qua parameter.
-    @Query(value = """
+    @Query(
+            value = """
             SELECT ri FROM RoomInspection ri
             JOIN FETCH ri.room r
             JOIN FETCH ri.property p
             JOIN FETCH ri.booking b
+            LEFT JOIN FETCH ri.assignedEmployee ae
             LEFT JOIN FETCH ri.inspectedBy ib
             WHERE p.id = :propertyId
               AND (:status IS NULL OR ri.status = :status)
+              AND (:unassignedOnly = false OR ri.assignedEmployee IS NULL)
               AND (:search IS NULL OR :search = '' OR
                    LOWER(r.roomNumber) LIKE LOWER(CONCAT('%', :search, '%')))
             ORDER BY ri.createdAt DESC
@@ -36,16 +37,28 @@ public interface RoomInspectionRepository extends JpaRepository<RoomInspection, 
             SELECT COUNT(ri) FROM RoomInspection ri
             WHERE ri.property.id = :propertyId
               AND (:status IS NULL OR ri.status = :status)
+              AND (:unassignedOnly = false OR ri.assignedEmployee IS NULL)
               AND (:search IS NULL OR :search = '' OR
                    LOWER(ri.room.roomNumber) LIKE LOWER(CONCAT('%', :search, '%')))
             """)
     Page<RoomInspection> findForManagerBoard(
             @Param("propertyId") UUID propertyId,
             @Param("status") RoomInspection.Status status,
+            @Param("unassignedOnly") boolean unassignedOnly,
             @Param("search") String search,
             Pageable pageable);
 
-    // SCR-59: pending inspections in employee-assigned properties
+    @Query("""
+            SELECT ri FROM RoomInspection ri
+            JOIN FETCH ri.room r
+            JOIN FETCH ri.property p
+            JOIN FETCH ri.booking b
+            LEFT JOIN FETCH ri.assignedEmployee ae
+            LEFT JOIN FETCH ri.inspectedBy ib
+            WHERE ri.id = :id
+            """)
+    Optional<RoomInspection> findByIdWithDetails(@Param("id") UUID id);
+
     @Query("""
             SELECT COUNT(ri) FROM RoomInspection ri
             WHERE ri.status IN :statuses
@@ -55,12 +68,12 @@ public interface RoomInspectionRepository extends JpaRepository<RoomInspection, 
             @Param("statuses") Collection<RoomInspection.Status> statuses,
             @Param("propertyIds") Collection<UUID> propertyIds);
 
-    // SCR-62: employee inspection workspace
     @Query(
             value = """
             SELECT ri FROM RoomInspection ri
             JOIN FETCH ri.room r
             JOIN FETCH ri.booking b
+            LEFT JOIN FETCH ri.assignedEmployee ae
             WHERE ri.property.id IN :propertyIds
               AND ri.status IN :statuses
             ORDER BY ri.createdAt DESC
@@ -79,6 +92,7 @@ public interface RoomInspectionRepository extends JpaRepository<RoomInspection, 
             SELECT ri FROM RoomInspection ri
             JOIN FETCH ri.room r
             JOIN FETCH ri.booking b
+            LEFT JOIN FETCH ri.assignedEmployee ae
             WHERE ri.id = :id
               AND ri.property.id IN :propertyIds
             """)
@@ -86,7 +100,6 @@ public interface RoomInspectionRepository extends JpaRepository<RoomInspection, 
             @Param("id") UUID id,
             @Param("propertyIds") Collection<UUID> propertyIds);
 
-    // SCR-64: resolve inspection FAILED for a room + employee (most recent first).
     @Query("""
             SELECT ri FROM RoomInspection ri
             JOIN FETCH ri.booking b
@@ -103,7 +116,6 @@ public interface RoomInspectionRepository extends JpaRepository<RoomInspection, 
             @Param("status") RoomInspection.Status status,
             Pageable pageable);
 
-    /** SCR-64 — FAILED inspections by employee that do not yet have a damage report. */
     @Query("""
             SELECT ri FROM RoomInspection ri
             JOIN FETCH ri.room r
@@ -119,7 +131,6 @@ public interface RoomInspectionRepository extends JpaRepository<RoomInspection, 
             @Param("employeeId") UUID employeeId,
             @Param("status") RoomInspection.Status status);
 
-    /** SCR-64 — Load specific FAILED inspection owned by employee (for create by inspectionId). */
     @Query("""
             SELECT ri FROM RoomInspection ri
             JOIN FETCH ri.booking b
