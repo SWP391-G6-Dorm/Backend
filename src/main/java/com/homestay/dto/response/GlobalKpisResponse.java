@@ -24,6 +24,18 @@ public class GlobalKpisResponse {
     /** Tổng số property */
     private long totalProperties;
 
+    /** Tổng số floor */
+    private long totalFloors;
+
+    /** Tổng số room */
+    private long totalRooms;
+
+    /** Phòng đang available */
+    private long availableRooms;
+
+    /** Phòng đang occupied */
+    private long occupiedRooms;
+
     /** Tổng số khách hàng (role CUSTOMER) */
     private long totalCustomers;
 }
