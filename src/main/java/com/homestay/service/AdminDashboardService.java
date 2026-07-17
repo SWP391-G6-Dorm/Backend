@@ -4,10 +4,13 @@ import com.homestay.dto.response.GlobalKpisResponse;
 import com.homestay.dto.response.GlobalRevenueReportResponse;
 import com.homestay.dto.response.GlobalRevenueReportResponse.MonthlyRevenue;
 import com.homestay.dto.response.RevenueReportResponse;
+import com.homestay.entity.Room;
 import com.homestay.entity.User;
 import com.homestay.repository.BookingRepository;
+import com.homestay.repository.FloorRepository;
 import com.homestay.repository.PaymentRepository;
 import com.homestay.repository.PropertyRepository;
+import com.homestay.repository.RoomRepository;
 import com.homestay.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -31,6 +34,8 @@ public class AdminDashboardService {
     private final PaymentRepository paymentRepository;
     private final BookingRepository bookingRepository;
     private final PropertyRepository propertyRepository;
+    private final FloorRepository floorRepository;
+    private final RoomRepository roomRepository;
     private final UserRepository userRepository;
     private final ReportService reportService;
 
@@ -42,6 +47,10 @@ public class AdminDashboardService {
                 .totalRevenue(totalRevenue != null ? totalRevenue.longValue() : 0L)
                 .totalBookings(bookingRepository.count())
                 .totalProperties(propertyRepository.count())
+                .totalFloors(floorRepository.count())
+                .totalRooms(roomRepository.count())
+                .availableRooms(roomRepository.countByStatus(Room.Status.AVAILABLE))
+                .occupiedRooms(roomRepository.countByStatus(Room.Status.OCCUPIED))
                 .totalCustomers(userRepository.countByRole(User.Role.CUSTOMER))
                 .build();
     }
