@@ -1,7 +1,6 @@
 package com.homestay.dto.response;
 
 import com.homestay.entity.RoomInspection;
-import com.homestay.entity.User;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -10,38 +9,25 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-/** SCR-42 — Manager inspection list/detail (api-spec). */
+/** SCR-42: Tóm tắt kiểm tra phòng cho Manager (dùng cả list + drawer log). Read-only. */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class InspectionSummaryResponse {
 
     private UUID id;
-    private RoomBrief room;
+    private UUID roomId;
+    private String roomNumber;
+    private UUID propertyId;
+    private String propertyName;
     private UUID bookingId;
-    private EmployeeBrief assignedEmployee;
-    private EmployeeBrief inspectedBy;
+    private UUID inspectorId;
+    private String inspectorName;
     private String status;
     private String note;
     private LocalDateTime inspectedAt;
     private LocalDateTime createdAt;
     private Long inspectionDurationMinutes;
-
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class RoomBrief {
-        private UUID id;
-        private String roomNumber;
-    }
-
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class EmployeeBrief {
-        private UUID id;
-        private String fullName;
-    }
 
     public static InspectionSummaryResponse fromEntity(RoomInspection ri) {
         Long durationMinutes = null;
@@ -50,22 +36,18 @@ public class InspectionSummaryResponse {
         }
         return new InspectionSummaryResponse(
                 ri.getId(),
-                new RoomBrief(ri.getRoom().getId(), ri.getRoom().getRoomNumber()),
+                ri.getRoom().getId(),
+                ri.getRoom().getRoomNumber(),
+                ri.getProperty().getId(),
+                ri.getProperty().getName(),
                 ri.getBooking().getId(),
-                toEmployee(ri.getAssignedEmployee()),
-                toEmployee(ri.getInspectedBy()),
+                ri.getInspectedBy() != null ? ri.getInspectedBy().getId() : null,
+                ri.getInspectedBy() != null ? ri.getInspectedBy().getFullName() : null,
                 ri.getStatus().name(),
                 ri.getNote(),
                 ri.getInspectedAt(),
                 ri.getCreatedAt(),
                 durationMinutes
         );
-    }
-
-    private static EmployeeBrief toEmployee(User user) {
-        if (user == null) {
-            return null;
-        }
-        return new EmployeeBrief(user.getId(), user.getFullName());
     }
 }

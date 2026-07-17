@@ -12,8 +12,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * SCR-53 — Damage Escalation (Admin).
- * Flat fields match current FE; also expose managerNote / approvedAmount for Drawer.
+ * SCR-53 - Damage Escalation (Admin). Field khop FE AdminDamageReport.
+ * status/attachments duoc suy dien; entity khong luu truc tiep.
  */
 @Data
 @Builder
@@ -27,16 +27,10 @@ public class AdminDamageReportResponse {
     private String propertyName;
     private String reportedBy;
     private BigDecimal totalFee;
-    /** Manager-proposed fee after escalate (SCR-43). */
-    private BigDecimal approvedAmount;
     private String status;
-    private String managerNote;
-    private String managerName;
-    private Boolean requiresAdminEscalation;
     private List<Item> items;
     private List<AttachmentDto> attachments;
     private LocalDateTime createdAt;
-    private LocalDateTime escalatedAt;
 
     @Data
     @Builder
@@ -54,15 +48,12 @@ public class AdminDamageReportResponse {
     public static class AttachmentDto {
         private String url;
         private String type;
-        private String fileName;
     }
 
     public static AdminDamageReportResponse from(DamageReport dr, List<Attachment> reportAttachments) {
         var inspection = dr.getInspection();
         String reportedBy = (inspection.getInspectedBy() != null)
                 ? inspection.getInspectedBy().getFullName() : "";
-        String managerName = dr.getApprovedBy() != null
-                ? dr.getApprovedBy().getFullName() : null;
 
         List<Item> items = (dr.getItems() == null) ? List.of()
                 : dr.getItems().stream()
@@ -77,7 +68,6 @@ public class AdminDamageReportResponse {
                     .map(a -> AttachmentDto.builder()
                             .url(a.getFileUrl())
                             .type("IMAGE")
-                            .fileName(a.getFileName())
                             .build())
                     .toList();
 
@@ -88,25 +78,19 @@ public class AdminDamageReportResponse {
                 .propertyName(inspection.getProperty().getName())
                 .reportedBy(reportedBy)
                 .totalFee(dr.getTotalEstimatedCost())
-                .approvedAmount(dr.getApprovedAmount())
-                .status(mapStatus(dr))
-                .managerNote(dr.getNote())
-                .managerName(managerName)
-                .requiresAdminEscalation(dr.getRequiresAdminEscalation())
+                .status(mapStatus(dr.getStatus()))
                 .items(items)
                 .attachments(atts)
                 .createdAt(dr.getCreatedAt())
-                .escalatedAt(dr.getApprovedAt())
                 .build();
     }
 
-    /** Queue items map to ESCALATED; finalized → APPROVED. */
-    private static String mapStatus(DamageReport dr) {
-        if (dr.getStatus() == DamageReport.Status.APPROVED) {
+    // Map entity status -> FE enum ('ESCALATED' | 'APPROVED' | 'PENDING_REVIEW').
+    private static String mapStatus(DamageReport.Status status) {
+        if (status == DamageReport.Status.APPROVED) {
             return "APPROVED";
         }
-        if (dr.getStatus() == DamageReport.Status.PENDING_APPROVAL
-                && Boolean.TRUE.equals(dr.getRequiresAdminEscalation())) {
+        if (status == DamageReport.Status.PENDING_APPROVAL) {
             return "ESCALATED";
         }
         return "PENDING_REVIEW";

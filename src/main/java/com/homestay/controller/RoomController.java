@@ -4,7 +4,6 @@ import com.homestay.dto.request.CreateRoomRequest;
 import com.homestay.dto.request.UpdateRoomRequest;
 import com.homestay.dto.request.UpdateRoomStatusRequest;
 import com.homestay.dto.response.ApiResponse;
-import com.homestay.dto.response.AvailabilityResponse;
 import com.homestay.dto.response.BookingSummaryResponse;
 import com.homestay.dto.response.PageResponse;
 import com.homestay.dto.response.RoomCalendarResponse;

@@ -10,8 +10,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.UUID;
 import java.util.List;
+import java.util.UUID;
 
 @Component
 public class DataSeeder implements CommandLineRunner {
@@ -25,12 +25,12 @@ public class DataSeeder implements CommandLineRunner {
     private final ManagerPropertyAssignmentRepository assignmentRepository;
 
     public DataSeeder(UserRepository userRepository,
-            PropertyRepository propertyRepository,
-            FloorRepository floorRepository,
-            RoomRepository roomRepository,
-            BookingRepository bookingRepository,
-            PasswordEncoder passwordEncoder,
-            ManagerPropertyAssignmentRepository assignmentRepository) {
+                      PropertyRepository propertyRepository,
+                      FloorRepository floorRepository,
+                      RoomRepository roomRepository,
+                      BookingRepository bookingRepository,
+                      PasswordEncoder passwordEncoder,
+                      ManagerPropertyAssignmentRepository assignmentRepository) {
         this.userRepository = userRepository;
         this.propertyRepository = propertyRepository;
         this.floorRepository = floorRepository;
@@ -86,13 +86,12 @@ public class DataSeeder implements CommandLineRunner {
     private void seedManagerAssignments() {
         User manager = userRepository.findByEmail("manager@dev.local").orElse(null);
         User admin = userRepository.findByEmail("admin@dev.local").orElse(null);
-        if (manager == null || admin == null)
-            return;
+        if (manager == null || admin == null) return;
 
         List<Property> properties = propertyRepository.findAll();
         for (Property property : properties) {
             boolean exists = assignmentRepository.existsByManagerIdAndPropertyIdAndStatus(
-                    manager.getId(), property.getId(), ManagerPropertyAssignment.Status.ACTIVE);
+                manager.getId(), property.getId(), ManagerPropertyAssignment.Status.ACTIVE);
             if (!exists) {
                 ManagerPropertyAssignment assignment = new ManagerPropertyAssignment();
                 assignment.setManager(manager);
@@ -105,10 +104,10 @@ public class DataSeeder implements CommandLineRunner {
         }
     }
 
+
     private void seedMockData() {
         User customer = userRepository.findByEmail("customer@dev.local").orElse(null);
-        if (customer == null)
-            return;
+        if (customer == null) return;
 
         // Mock 1: Sunset Resort Đà Nẵng
         seedMockBooking(
@@ -124,7 +123,8 @@ public class DataSeeder implements CommandLineRunner {
                 2,
                 new BigDecimal("7500000"),
                 Booking.Status.CONFIRMED,
-                customer);
+                customer
+        );
 
         // Mock 2: Mountain View Homestay
         seedMockBooking(
@@ -140,7 +140,8 @@ public class DataSeeder implements CommandLineRunner {
                 1,
                 new BigDecimal("2400000"),
                 Booking.Status.PENDING_DEPOSIT,
-                customer);
+                customer
+        );
 
         // Mock 3: Hội An Garden Villa
         seedMockBooking(
@@ -156,7 +157,8 @@ public class DataSeeder implements CommandLineRunner {
                 2,
                 new BigDecimal("5400000"),
                 Booking.Status.CHECKED_OUT,
-                customer);
+                customer
+        );
 
         // Mock 4: Phú Quốc Beach House
         seedMockBooking(
@@ -172,12 +174,13 @@ public class DataSeeder implements CommandLineRunner {
                 1,
                 new BigDecimal("1500000"),
                 Booking.Status.CANCELLED,
-                customer);
+                customer
+        );
     }
 
     private void seedMockBooking(UUID bookingId, String propName, String address, String roomNum, String roomType,
-            BigDecimal price, int capacity, LocalDate checkIn, LocalDate checkOut, int guests,
-            BigDecimal totalAmount, Booking.Status status, User customer) {
+                                 BigDecimal price, int capacity, LocalDate checkIn, LocalDate checkOut, int guests,
+                                 BigDecimal totalAmount, Booking.Status status, User customer) {
         if (bookingRepository.existsById(bookingId)) {
             return;
         }
@@ -193,18 +196,16 @@ public class DataSeeder implements CommandLineRunner {
                     return propertyRepository.save(p);
                 });
 
-        Floor floor = floorRepository.findByPropertyOrderByFloorNumberAsc(property).stream().findFirst()
-                .orElseGet(() -> {
-                    Floor f = new Floor();
-                    f.setProperty(property);
-                    f.setFloorNumber(1);
-                    f.setDescription("Floor 1");
-                    return floorRepository.save(f);
-                });
+        Floor floor = floorRepository.findByPropertyOrderByFloorNumberAsc(property).stream().findFirst().orElseGet(() -> {
+            Floor f = new Floor();
+            f.setProperty(property);
+            f.setFloorNumber(1);
+            f.setDescription("Floor 1");
+            return floorRepository.save(f);
+        });
 
         Room room = roomRepository.findAll().stream()
-                .filter(r -> r.getProperty().getId().equals(property.getId())
-                        && r.getRoomNumber().equalsIgnoreCase(roomNum))
+                .filter(r -> r.getProperty().getId().equals(property.getId()) && r.getRoomNumber().equalsIgnoreCase(roomNum))
                 .findFirst().orElseGet(() -> {
                     Room r = new Room();
                     r.setProperty(property);

@@ -15,10 +15,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
-/**
- * Legacy manager payment routes. Prefer {@code /api/v1/managers/payments} (SCR-36).
- * List is property-scoped (same as v1) — never returns cross-property payments.
- */
 @RestController
 @RequestMapping("/api/manager/payments")
 @PreAuthorize("hasRole('MANAGER')")
@@ -32,18 +28,13 @@ public class PaymentController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<PageResponse<PaymentSummaryResponse>>> getAllPayments(
-            @AuthenticationPrincipal User currentUser,
-            @RequestParam(required = false) String propertyId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) String type,
-            @RequestParam(required = false) String method,
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "createdAt,desc") String sort
     ) {
-        PageResponse<PaymentSummaryResponse> data = paymentService.getPaymentsForManagerScoped(
-                currentUser, propertyId, status, type, method, search, page, size, sort);
+        PageResponse<PaymentSummaryResponse> data = paymentService.getAllPayments(page, size, status, search, sort);
         return ResponseEntity.ok(ApiResponse.ok(data));
     }
 

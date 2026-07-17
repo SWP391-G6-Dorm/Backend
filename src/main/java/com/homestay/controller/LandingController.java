@@ -1,9 +1,7 @@
 package com.homestay.controller;
 
 import com.homestay.dto.response.ApiResponse;
-import com.homestay.dto.response.AvailabilityResponse;
 import com.homestay.dto.response.FeaturedPropertyResponse;
-import com.homestay.dto.response.MonthAvailabilityResponse;
 import com.homestay.dto.response.PageResponse;
 import com.homestay.dto.response.PromotionResponse;
 import com.homestay.dto.response.RoomCalendarResponse;

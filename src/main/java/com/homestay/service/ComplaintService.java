@@ -114,8 +114,6 @@ public class ComplaintService {
             throw new BusinessException("Trạng thái mới trùng với trạng thái hiện tại");
         }
 
-        // Cho phép chuyển đổi linh hoạt giữa bất kỳ trạng thái nào miễn là khác trạng thái hiện tại
-        boolean validTransition = true;
 
         if (next == Complaint.Status.RESOLVED || next == Complaint.Status.CLOSED) {
             if (request.getResolutionNotes() == null || request.getResolutionNotes().trim().isEmpty()) {

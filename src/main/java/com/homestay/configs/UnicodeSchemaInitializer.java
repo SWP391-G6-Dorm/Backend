@@ -26,8 +26,6 @@ public class UnicodeSchemaInitializer implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        migrateUsersRoleConstraint();
-        migrateNotificationsTypeConstraint();
         migrate("properties", "name", "NVARCHAR(200) NOT NULL");
         migrate("properties", "address", "NVARCHAR(500) NOT NULL");
         migrate("properties", "description", "NVARCHAR(MAX) NULL");
@@ -43,107 +41,6 @@ public class UnicodeSchemaInitializer implements ApplicationRunner {
         migrate("promotions", "cta_url", "NVARCHAR(300) NOT NULL");
         migrate("promotions", "image_url", "NVARCHAR(500) NULL");
         migrate("promotions", "color_theme", "NVARCHAR(20) NOT NULL");
-    }
-
-    /** DB cũ chỉ CHECK role MANAGER/CUSTOMER — cần thêm ADMIN, EMPLOYEE. */
-    private void migrateUsersRoleConstraint() {
-        try {
-            Integer tableExists = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'users'",
-                    Integer.class);
-            if (tableExists == null || tableExists == 0) {
-                return;
-            }
-
-            String definition = jdbcTemplate.query(
-                    """
-                    SELECT cc.definition FROM sys.check_constraints cc
-                    JOIN sys.tables t ON cc.parent_object_id = t.object_id
-                    WHERE t.name = 'users' AND cc.definition LIKE '%role%'
-                    """,
-                    rs -> rs.next() ? rs.getString(1) : null);
-
-            if (definition != null
-                    && definition.contains("ADMIN")
-                    && definition.contains("EMPLOYEE")
-                    && definition.contains("CUSTOMER")
-                    && definition.contains("MANAGER")) {
-                return;
-            }
-
-            dropConstraintOnUsersRole();
-            jdbcTemplate.execute(
-                    "ALTER TABLE users ADD CONSTRAINT CK_users_role "
-                            + "CHECK (role IN ('ADMIN', 'MANAGER', 'EMPLOYEE', 'CUSTOMER'))");
-            log.info("Migrated users.role CHECK constraint (ADMIN, MANAGER, EMPLOYEE, CUSTOMER)");
-        } catch (Exception e) {
-            log.error("Could not migrate users.role constraint: {}", e.getMessage(), e);
-        }
-    }
-
-    private void dropConstraintOnUsersRole() {
-        var names = jdbcTemplate.queryForList(
-                """
-                SELECT cc.name FROM sys.check_constraints cc
-                JOIN sys.tables t ON cc.parent_object_id = t.object_id
-                WHERE t.name = 'users' AND cc.definition LIKE '%role%'
-                """,
-                String.class);
-        for (String name : names) {
-            jdbcTemplate.execute("ALTER TABLE users DROP CONSTRAINT " + name);
-            log.info("Dropped constraint {} on users.role", name);
-        }
-    }
-
-    /** DB cũ thiếu BOOKING_CANCELLED — job hold-timeout / hủy booking sẽ fail INSERT. */
-    private void migrateNotificationsTypeConstraint() {
-        try {
-            Integer tableExists = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'notifications'",
-                    Integer.class);
-            if (tableExists == null || tableExists == 0) {
-                return;
-            }
-
-            String definition = jdbcTemplate.query(
-                    """
-                    SELECT cc.definition FROM sys.check_constraints cc
-                    JOIN sys.tables t ON cc.parent_object_id = t.object_id
-                    WHERE t.name = 'notifications' AND cc.definition LIKE '%type%'
-                    """,
-                    rs -> rs.next() ? rs.getString(1) : null);
-
-            if (definition != null
-                    && definition.contains("BOOKING_CANCELLED")
-                    && definition.contains("BOOKING_CONFIRMED")
-                    && definition.contains("CONTRACT_GENERATED")
-                    && definition.contains("PAYMENT_CONFIRMED")
-                    && definition.contains("MAINTENANCE_UPDATED")
-                    && definition.contains("SYSTEM")) {
-                return;
-            }
-
-            var names = jdbcTemplate.queryForList(
-                    """
-                    SELECT cc.name FROM sys.check_constraints cc
-                    JOIN sys.tables t ON cc.parent_object_id = t.object_id
-                    WHERE t.name = 'notifications' AND cc.definition LIKE '%type%'
-                    """,
-                    String.class);
-            for (String name : names) {
-                jdbcTemplate.execute("ALTER TABLE notifications DROP CONSTRAINT " + name);
-                log.info("Dropped constraint {} on notifications.type", name);
-            }
-
-            jdbcTemplate.execute(
-                    "ALTER TABLE notifications ADD CONSTRAINT CK_notifications_type "
-                            + "CHECK (type IN ("
-                            + "'BOOKING_CONFIRMED','BOOKING_CANCELLED','CONTRACT_GENERATED',"
-                            + "'PAYMENT_CONFIRMED','MAINTENANCE_UPDATED','SYSTEM'))");
-            log.info("Migrated notifications.type CHECK constraint (added BOOKING_CANCELLED)");
-        } catch (Exception e) {
-            log.error("Could not migrate notifications.type constraint: {}", e.getMessage(), e);
-        }
     }
 
     /** room_number có unique constraint — phải drop trước khi đổi kiểu cột. */

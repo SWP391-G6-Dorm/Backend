@@ -16,8 +16,7 @@ import java.util.UUID;
         @Index(name = "idx_ri_booking",  columnList = "booking_id", unique = true),
         @Index(name = "idx_ri_room",     columnList = "room_id"),
         @Index(name = "idx_ri_property", columnList = "property_id"),
-        @Index(name = "idx_ri_status",   columnList = "status"),
-        @Index(name = "idx_ri_assigned_employee", columnList = "assigned_employee_id")
+        @Index(name = "idx_ri_status",   columnList = "status")
     }
 )
 @Getter
@@ -46,12 +45,7 @@ public class RoomInspection {
     @JoinColumn(name = "property_id", nullable = false)
     private Property property;
 
-    /** Employee được gán / Claim (null = Unassigned). Bắt buộc trước Pass/Fail. */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "assigned_employee_id")
-    private User assignedEmployee;
-
-    /** Employee đã nộp Pass/Fail (thường = assignedEmployee). */
+    // Employee thực hiện kiểm tra
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "inspected_by")
     private User inspectedBy;

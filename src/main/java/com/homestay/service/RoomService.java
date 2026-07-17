@@ -512,7 +512,14 @@ public class RoomService {
         List<RoomDetailResponse.RoomImageInfo> result = new ArrayList<>();
         for (int i = 0; i < files.size(); i++) {
             MultipartFile file = files.get(i);
-            String fileName = UUID.randomUUID() + "_" + file.getOriginalFilename();
+            String originalName = file.getOriginalFilename();
+            if (originalName == null || originalName.isBlank()) originalName = "image.png";
+            String extension = "";
+            int dotIndex = originalName.lastIndexOf('.');
+            if (dotIndex >= 0) {
+                extension = originalName.substring(dotIndex);
+            }
+            String fileName = UUID.randomUUID().toString() + extension;
             Path filePath = dirPath.resolve(fileName);
 
             try {
@@ -587,7 +594,7 @@ public class RoomService {
         try {
             Path filePath = Paths.get(image.getImageUrl().replaceFirst("^/", ""));
             Files.deleteIfExists(filePath);
-        } catch (IOException ignored) {}
+        } catch (Exception ignored) {}
         roomImageRepository.delete(image);
 
         if (wasPrimary) {
