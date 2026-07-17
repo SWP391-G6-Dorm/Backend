@@ -1,6 +1,5 @@
 package com.homestay.dto.response;
 
-import com.homestay.entity.Attachment;
 import com.homestay.entity.DamageItem;
 import com.homestay.entity.DamageReport;
 import lombok.AllArgsConstructor;
@@ -12,7 +11,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
-/** SCR-43: Chi tiết báo cáo hư hại cho Drawer (hạng mục + ảnh minh chứng). */
+/** SCR-43: Chi tiết báo cáo hư hại cho Drawer (kèm danh sách hạng mục). */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -32,7 +31,6 @@ public class DamageReportDetailResponse {
     private String note;
     private LocalDateTime createdAt;
     private List<DamageItemResponse> items;
-    private List<PhotoResponse> photos;
 
     @Data
     @NoArgsConstructor
@@ -52,25 +50,9 @@ public class DamageReportDetailResponse {
         }
     }
 
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class PhotoResponse {
-        private String url;
-        private String fileName;
-    }
-
     public static DamageReportDetailResponse fromEntity(DamageReport dr) {
-        return fromEntity(dr, List.of());
-    }
-
-    public static DamageReportDetailResponse fromEntity(DamageReport dr, List<Attachment> attachments) {
         List<DamageItemResponse> items = dr.getItems() == null ? List.of()
                 : dr.getItems().stream().map(DamageItemResponse::fromEntity).toList();
-        List<PhotoResponse> photos = attachments == null ? List.of()
-                : attachments.stream()
-                    .map(a -> new PhotoResponse(a.getFileUrl(), a.getFileName()))
-                    .toList();
         return new DamageReportDetailResponse(
                 dr.getId(),
                 dr.getBooking().getId(),
@@ -86,8 +68,7 @@ public class DamageReportDetailResponse {
                 dr.getRequiresAdminEscalation(),
                 dr.getNote(),
                 dr.getCreatedAt(),
-                items,
-                photos
+                items
         );
     }
 }

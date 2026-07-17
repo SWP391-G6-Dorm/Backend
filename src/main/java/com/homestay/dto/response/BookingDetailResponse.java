@@ -41,8 +41,6 @@ public class BookingDetailResponse {
     private String cancelReason;
     private LocalDateTime createdAt;
     private boolean isReviewed;
-    /** True when damage fee exists and DAMAGE_FEE payment is PAID. */
-    private boolean damageFeePaid;
 
     private List<PaymentInfo> payments;
 

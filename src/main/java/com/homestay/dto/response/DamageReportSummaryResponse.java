@@ -8,7 +8,6 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /** SCR-43: Tóm tắt báo cáo hư hại cho Manager (danh sách). */
 @Data
@@ -29,17 +28,8 @@ public class DamageReportSummaryResponse {
     private Boolean requiresAdminEscalation;
     private String note;
     private LocalDateTime createdAt;
-    /** Tên hạng mục hư hại (SCR-43 table "Items Damaged"). */
-    private String itemsDamaged;
 
     public static DamageReportSummaryResponse fromEntity(DamageReport dr) {
-        String itemsDamaged = "";
-        if (dr.getItems() != null && !dr.getItems().isEmpty()) {
-            itemsDamaged = dr.getItems().stream()
-                    .map(it -> it.getItemName())
-                    .filter(n -> n != null && !n.isBlank())
-                    .collect(Collectors.joining(", "));
-        }
         return new DamageReportSummaryResponse(
                 dr.getId(),
                 dr.getBooking().getId(),
@@ -54,8 +44,7 @@ public class DamageReportSummaryResponse {
                 dr.getApprovedBy() != null ? dr.getApprovedBy().getFullName() : null,
                 dr.getRequiresAdminEscalation(),
                 dr.getNote(),
-                dr.getCreatedAt(),
-                itemsDamaged
+                dr.getCreatedAt()
         );
     }
 }

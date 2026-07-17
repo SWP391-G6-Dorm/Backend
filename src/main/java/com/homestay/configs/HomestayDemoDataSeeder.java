@@ -18,7 +18,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Seed homestay/resort + phòng demo khi DB trống hoặc thiếu dữ liệu Hà Nội (SCR-07).
@@ -28,55 +27,8 @@ import java.util.Set;
 @ConditionalOnProperty(name = "app.seed.enabled", havingValue = "true", matchIfMissing = false)
 public class HomestayDemoDataSeeder implements ApplicationRunner {
 
-    /** Bộ ảnh giới thiệu cũ (đồng bộ mọi property) — dùng để phát hiện và thay thế. */
-    private static final Set<String> LEGACY_GENERIC_GALLERY = Set.of(
-            "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600&h=400&fit=crop",
-            "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=800&h=600&fit=crop"
-    );
-
-    private static final String[] HANOI_GALLERY = {
-            "https://images.unsplash.com/photo-1559592413-7cec9d0193c3?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1528181304800-259b08848526?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1564501049412-61c2a3083791?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1590490360182-c33d57733427?w=800&h=600&fit=crop",
-    };
-
-    private static final String[] DANANG_GALLERY = {
-            "https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1571008887538-b36bb930f578?w=800&h=600&fit=crop",
-    };
-
-    private static final String[] HOIAN_GALLERY = {
-            "https://images.unsplash.com/photo-1528127269322-539801943592?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1602002418082-8251774c8ef0?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1584132967334-10e146bdffe3?w=800&h=600&fit=crop",
-    };
-
-    private static final String[] PHUQUOC_GALLERY = {
-            "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1473496162514-62a872171104?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1540541338287-41700207dee6?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1573843981267-be1999ff37cd?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1431540211162-84a671675558?w=800&h=600&fit=crop",
-    };
-
-    private static final String[] DALAT_GALLERY = {
-            "https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1519682337058-a94d519337bc?w=800&h=600&fit=crop",
-            "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=600&fit=crop",
-    };
+    private static final String IMG =
+            "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600&h=400&fit=crop";
 
     private final PropertyRepository propertyRepository;
     private final FloorRepository floorRepository;
@@ -98,7 +50,6 @@ public class HomestayDemoDataSeeder implements ApplicationRunner {
     @Transactional
     public void run(ApplicationArguments args) {
         syncKnownProperties();
-        resyncPropertyGalleryImages();
 
         if (propertyRepository.count() == 0) {
             seedAll();
@@ -188,8 +139,6 @@ public class HomestayDemoDataSeeder implements ApplicationRunner {
         floor.setDescription("Tầng 1");
         floorRepository.save(floor);
 
-        String[] gallery = galleryForProperty(name);
-
         for (RoomSeed seed : rooms) {
             Room room = new Room();
             room.setProperty(property);
@@ -203,99 +152,13 @@ public class HomestayDemoDataSeeder implements ApplicationRunner {
             room.setStatus(Room.Status.AVAILABLE);
             roomRepository.save(room);
 
-            saveGalleryImages(room, gallery);
-        }
-    }
-
-    private void saveGalleryImages(Room room, String[] galleryUrls) {
-        for (int i = 0; i < galleryUrls.length; i++) {
             RoomImage image = new RoomImage();
             image.setRoom(room);
-            image.setImageUrl(galleryUrls[i]);
-            image.setIsPrimary(i == 0);
-            image.setSortOrder(i);
+            image.setImageUrl(IMG);
+            image.setIsPrimary(true);
+            image.setSortOrder(0);
             roomImageRepository.save(image);
         }
-    }
-
-    /** Gán ảnh giới thiệu theo từng homestay/resort; thay bộ ảnh generic cũ. */
-    private void resyncPropertyGalleryImages() {
-        int roomsUpdated = 0;
-        for (Room room : roomRepository.findAll()) {
-            String propertyName = room.getProperty().getName();
-            String[] expected = galleryForProperty(propertyName);
-            List<RoomImage> existing = roomImageRepository.findByRoomIdOrderBySortOrderAsc(room.getId());
-
-            if (!needsGalleryResync(existing, expected)) {
-                if (existing.size() < expected.length) {
-                    int start = existing.size();
-                    for (int i = start; i < expected.length; i++) {
-                        RoomImage image = new RoomImage();
-                        image.setRoom(room);
-                        image.setImageUrl(expected[i]);
-                        image.setIsPrimary(false);
-                        image.setSortOrder(i);
-                        roomImageRepository.save(image);
-                    }
-                    roomsUpdated++;
-                }
-                continue;
-            }
-
-            roomImageRepository.deleteAllByRoomId(room.getId());
-            saveGalleryImages(room, expected);
-            roomsUpdated++;
-        }
-        if (roomsUpdated > 0) {
-            System.out.println("[Seed] Synced property-specific gallery for " + roomsUpdated + " room(s)");
-        }
-    }
-
-    private boolean needsGalleryResync(List<RoomImage> existing, String[] expected) {
-        if (existing.isEmpty()) {
-            return true;
-        }
-        if (existing.stream().anyMatch(img -> LEGACY_GENERIC_GALLERY.contains(img.getImageUrl()))) {
-            return true;
-        }
-        if (existing.size() != expected.length) {
-            return true;
-        }
-        for (int i = 0; i < expected.length; i++) {
-            if (!expected[i].equals(existing.get(i).getImageUrl())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private String[] galleryForProperty(String propertyName) {
-        String normalized = propertyName == null ? "" : propertyName.toLowerCase();
-        if (containsAny(normalized, "hà nội", "ha noi", "old quarter", "hanoi")) {
-            return HANOI_GALLERY;
-        }
-        if (containsAny(normalized, "đà nẵng", "da nang", "sunset resort")) {
-            return DANANG_GALLERY;
-        }
-        if (containsAny(normalized, "hội an", "hoi an", "garden villa")) {
-            return HOIAN_GALLERY;
-        }
-        if (containsAny(normalized, "phú quốc", "phu quoc", "beach house")) {
-            return PHUQUOC_GALLERY;
-        }
-        if (containsAny(normalized, "đà lạt", "da lat", "mountain view")) {
-            return DALAT_GALLERY;
-        }
-        return DANANG_GALLERY;
-    }
-
-    private static boolean containsAny(String text, String... keywords) {
-        for (String keyword : keywords) {
-            if (text.contains(keyword)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static RoomSeed room(String number, String type, long price, int capacity, int area) {

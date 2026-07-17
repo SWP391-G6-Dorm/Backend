@@ -25,34 +25,19 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
                                      Pageable pageable);
 
     /** SCR-36 — Manager list scoped by assigned properties. */
-    @Query(
-            value = """
-                SELECT p FROM Payment p
-                JOIN p.booking b
-                JOIN b.room r
-                WHERE r.property.id IN :propertyIds
-                  AND (:status IS NULL OR p.status = :status)
-                  AND (:type IS NULL OR p.type = :type)
-                  AND (:method IS NULL OR p.method = :method)
-                  AND (:search IS NULL OR
-                       LOWER(p.customer.fullName) LIKE LOWER(CONCAT('%', :search, '%'))
-                       OR LOWER(CAST(p.id AS string)) LIKE LOWER(CONCAT('%', :search, '%'))
-                       OR LOWER(CAST(b.id AS string)) LIKE LOWER(CONCAT('%', :search, '%')))
-                """,
-            countQuery = """
-                SELECT COUNT(p) FROM Payment p
-                JOIN p.booking b
-                JOIN b.room r
-                WHERE r.property.id IN :propertyIds
-                  AND (:status IS NULL OR p.status = :status)
-                  AND (:type IS NULL OR p.type = :type)
-                  AND (:method IS NULL OR p.method = :method)
-                  AND (:search IS NULL OR
-                       LOWER(p.customer.fullName) LIKE LOWER(CONCAT('%', :search, '%'))
-                       OR LOWER(CAST(p.id AS string)) LIKE LOWER(CONCAT('%', :search, '%'))
-                       OR LOWER(CAST(b.id AS string)) LIKE LOWER(CONCAT('%', :search, '%')))
-                """
-    )
+    @Query("""
+        SELECT p FROM Payment p
+        JOIN p.booking b
+        JOIN b.room r
+        WHERE r.property.id IN :propertyIds
+          AND (:status IS NULL OR p.status = :status)
+          AND (:type IS NULL OR p.type = :type)
+          AND (:method IS NULL OR p.method = :method)
+          AND (:search IS NULL OR
+               LOWER(p.customer.fullName) LIKE LOWER(CONCAT('%', :search, '%'))
+               OR LOWER(CAST(p.id AS string)) LIKE LOWER(CONCAT('%', :search, '%'))
+               OR LOWER(CAST(b.id AS string)) LIKE LOWER(CONCAT('%', :search, '%')))
+        """)
     Page<Payment> findForManagerWithFilters(
             @Param("propertyIds") List<UUID> propertyIds,
             @Param("status") Payment.Status status,
