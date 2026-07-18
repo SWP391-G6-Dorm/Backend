@@ -25,25 +25,27 @@ import java.util.UUID;
 /**
  * SCR-62 - Employee Room Inspection Hub.
  * List PENDING/IN_PROGRESS inspections in ACTIVE properties; pass or fail by inspection id.
+ * Pass/Fail allowed only when unclaimed (PENDING / no inspector) or claimed by current employee.
  */
 @Service
 @RequiredArgsConstructor
 public class EmployeeInspectionService {
 
+    private static final List<RoomInspection.Status> OPEN_STATUSES =
+            List.of(RoomInspection.Status.PENDING, RoomInspection.Status.IN_PROGRESS);
+
     private final RoomInspectionRepository roomInspectionRepository;
     private final EmployeePropertyAssignmentRepository employeePropertyAssignmentRepository;
 
     @Transactional(readOnly = true)
-    public PageResponse<EmployeeInspectionResponse> list(User employee, Pageable pageable) {
-        List<UUID> propertyIds = employeePropertyAssignmentRepository
-                .findPropertyIdsByEmployeeIdAndStatus(employee.getId(), EmployeePropertyAssignment.Status.ACTIVE);
+    public PageResponse<EmployeeInspectionResponse> list(User employee, String status, Pageable pageable) {
+        List<UUID> propertyIds = activePropertyIds(employee.getId());
         if (propertyIds.isEmpty()) {
             return new PageResponse<>(List.of(), pageable.getPageNumber(), pageable.getPageSize(), 0, 0);
         }
-        Page<RoomInspection> page = roomInspectionRepository.findForEmployee(
-                propertyIds,
-                List.of(RoomInspection.Status.PENDING, RoomInspection.Status.IN_PROGRESS),
-                pageable);
+
+        List<RoomInspection.Status> statuses = resolveStatuses(status);
+        Page<RoomInspection> page = roomInspectionRepository.findForEmployee(propertyIds, statuses, pageable);
         List<EmployeeInspectionResponse> content = page.getContent().stream()
                 .map(EmployeeInspectionResponse::fromEntity)
                 .toList();
@@ -56,33 +58,52 @@ public class EmployeeInspectionService {
     }
 
     @Transactional
-    public EmployeeInspectionResponse pass(User employee, UUID id, EmployeeInspectionResultRequest request) {
+    public void pass(User employee, UUID id, EmployeeInspectionResultRequest request) {
         RoomInspection inspection = loadInScope(employee.getId(), id);
-        guardOpen(inspection);
+        guardCanPerform(inspection, employee);
         inspection.setStatus(RoomInspection.Status.PASSED);
         inspection.setInspectedBy(employee);
         inspection.setInspectedAt(LocalDateTime.now());
         inspection.setNote(buildNote(request, false));
-        return EmployeeInspectionResponse.fromEntity(roomInspectionRepository.save(inspection));
+        roomInspectionRepository.save(inspection);
     }
 
     @Transactional
-    public EmployeeInspectionResponse fail(User employee, UUID id, EmployeeInspectionResultRequest request) {
-        if (request == null || !StringUtils.hasText(request.getNotes())) {
-            throw new BusinessException("Ghi chu bat buoc khi Fail");
+    public void fail(User employee, UUID id, EmployeeInspectionResultRequest request) {
+        if (request == null || !StringUtils.hasText(request.resolveNote())) {
+            throw new BusinessException("Please describe the damage found");
         }
         RoomInspection inspection = loadInScope(employee.getId(), id);
-        guardOpen(inspection);
+        guardCanPerform(inspection, employee);
         inspection.setStatus(RoomInspection.Status.FAILED_WITH_DAMAGE);
         inspection.setInspectedBy(employee);
         inspection.setInspectedAt(LocalDateTime.now());
         inspection.setNote(buildNote(request, true));
-        return EmployeeInspectionResponse.fromEntity(roomInspectionRepository.save(inspection));
+        roomInspectionRepository.save(inspection);
+    }
+
+    private List<RoomInspection.Status> resolveStatuses(String status) {
+        if (!StringUtils.hasText(status)) {
+            return OPEN_STATUSES;
+        }
+        try {
+            RoomInspection.Status parsed = RoomInspection.Status.valueOf(status.trim().toUpperCase());
+            if (!OPEN_STATUSES.contains(parsed)) {
+                throw new BusinessException("status filter must be PENDING or IN_PROGRESS");
+            }
+            return List.of(parsed);
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException("Invalid inspection status: " + status);
+        }
+    }
+
+    private List<UUID> activePropertyIds(UUID employeeId) {
+        return employeePropertyAssignmentRepository
+                .findPropertyIdsByEmployeeIdAndStatus(employeeId, EmployeePropertyAssignment.Status.ACTIVE);
     }
 
     private RoomInspection loadInScope(UUID employeeId, UUID inspectionId) {
-        List<UUID> propertyIds = employeePropertyAssignmentRepository
-                .findPropertyIdsByEmployeeIdAndStatus(employeeId, EmployeePropertyAssignment.Status.ACTIVE);
+        List<UUID> propertyIds = activePropertyIds(employeeId);
         if (propertyIds.isEmpty()) {
             throw new ResourceNotFoundException("Khong tim thay room inspection");
         }
@@ -90,10 +111,16 @@ public class EmployeeInspectionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Khong tim thay room inspection"));
     }
 
-    private void guardOpen(RoomInspection inspection) {
+    private void guardCanPerform(RoomInspection inspection, User employee) {
         RoomInspection.Status status = inspection.getStatus();
         if (status != RoomInspection.Status.PENDING && status != RoomInspection.Status.IN_PROGRESS) {
             throw new BusinessException("Inspection da hoan tat");
+        }
+        User holder = inspection.getInspectedBy();
+        if (status == RoomInspection.Status.IN_PROGRESS
+                && holder != null
+                && !holder.getId().equals(employee.getId())) {
+            throw new BusinessException("Pass/Fail chi khi inspection da gan cho ban");
         }
     }
 
@@ -102,8 +129,9 @@ public class EmployeeInspectionService {
             return null;
         }
         StringBuilder sb = new StringBuilder();
-        if (StringUtils.hasText(request.getNotes())) {
-            sb.append(request.getNotes().trim());
+        String note = request.resolveNote();
+        if (StringUtils.hasText(note)) {
+            sb.append(note);
         }
         EmployeeInspectionResultRequest.Checklist c = request.getChecklist();
         if (c != null) {
@@ -121,7 +149,7 @@ public class EmployeeInspectionService {
             }
         }
         if (fail && sb.length() == 0) {
-            throw new BusinessException("Ghi chu bat buoc khi Fail");
+            throw new BusinessException("Please describe the damage found");
         }
         return sb.length() > 0 ? sb.toString() : null;
     }

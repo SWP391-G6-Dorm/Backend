@@ -36,6 +36,7 @@ public class DamageReportManagerService {
     private final UserRepository userRepository;
     private final ReportPropertyScopeValidator scopeValidator;
     private final NotificationService notificationService;
+    private final DamageFeeSettlementService damageFeeSettlementService;
 
     @Transactional(readOnly = true)
     public PageResponse<DamageReportSummaryResponse> listForManager(
@@ -91,6 +92,8 @@ public class DamageReportManagerService {
         if (req.getNote() != null && !req.getNote().isBlank()) {
             dr.setNote(req.getNote().trim());
         }
+
+        damageFeeSettlementService.applyApprovedFee(dr, dr.getApprovedAmount());
 
         DamageReport saved = damageReportRepository.save(dr);
         notifyCustomer(saved, "Báo cáo hư hại của bạn đã được duyệt bồi thường.");

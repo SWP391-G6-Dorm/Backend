@@ -19,6 +19,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Collections;
+import java.util.Map;
 import java.util.UUID;
 
 /** SCR-62 - Employee Room Inspection Hub. Resource /api/v1/employees/inspections. */
@@ -33,28 +35,29 @@ public class EmployeeInspectionController {
     @GetMapping
     public ResponseEntity<ApiResponse<PageResponse<EmployeeInspectionResponse>>> list(
             @AuthenticationPrincipal User currentUser,
+            @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
         PageResponse<EmployeeInspectionResponse> data =
-                employeeInspectionService.list(currentUser, PageRequest.of(page, size));
+                employeeInspectionService.list(currentUser, status, PageRequest.of(page, size));
         return ResponseEntity.ok(ApiResponse.ok(data));
     }
 
     @PostMapping("/{id}/pass")
-    public ResponseEntity<ApiResponse<EmployeeInspectionResponse>> pass(
+    public ResponseEntity<ApiResponse<Map<String, Object>>> pass(
             @AuthenticationPrincipal User currentUser,
             @PathVariable UUID id,
             @RequestBody(required = false) EmployeeInspectionResultRequest request) {
-        EmployeeInspectionResponse data = employeeInspectionService.pass(currentUser, id, request);
-        return ResponseEntity.ok(ApiResponse.ok("Inspection passed", data));
+        employeeInspectionService.pass(currentUser, id, request);
+        return ResponseEntity.ok(ApiResponse.ok("Inspection passed", Collections.emptyMap()));
     }
 
     @PostMapping("/{id}/fail")
-    public ResponseEntity<ApiResponse<EmployeeInspectionResponse>> fail(
+    public ResponseEntity<ApiResponse<Map<String, Object>>> fail(
             @AuthenticationPrincipal User currentUser,
             @PathVariable UUID id,
             @RequestBody(required = false) EmployeeInspectionResultRequest request) {
-        EmployeeInspectionResponse data = employeeInspectionService.fail(currentUser, id, request);
-        return ResponseEntity.ok(ApiResponse.ok("Inspection failed", data));
+        employeeInspectionService.fail(currentUser, id, request);
+        return ResponseEntity.ok(ApiResponse.ok("Inspection failed", Collections.emptyMap()));
     }
 }

@@ -1,6 +1,5 @@
 package com.homestay.dto.response;
 
-import com.homestay.entity.Floor;
 import com.homestay.entity.HousekeepingTask;
 import com.homestay.entity.Room;
 import lombok.AllArgsConstructor;
@@ -18,29 +17,35 @@ import java.time.LocalDateTime;
 public class EmployeeHousekeepingTaskResponse {
 
     private String id;
-    private String roomNumber;
-    private String roomName;
-    private String floorName;
+    private RoomRef room;
     private String status;
-    private LocalDateTime assignedAt;
+    private String note;
+    private LocalDateTime createdAt;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RoomRef {
+        private String id;
+        private String roomNumber;
+    }
 
     public static EmployeeHousekeepingTaskResponse fromEntity(HousekeepingTask task) {
         Room room = task.getRoom();
-        String roomNumber = room != null ? room.getRoomNumber() : null;
-        Floor floor = room != null ? room.getFloor() : null;
-        String floorName = null;
-        if (floor != null) {
-            floorName = floor.getFloorNumber() != null
-                    ? "Floor " + floor.getFloorNumber()
-                    : null;
+        RoomRef roomRef = null;
+        if (room != null) {
+            roomRef = RoomRef.builder()
+                    .id(room.getId() != null ? room.getId().toString() : null)
+                    .roomNumber(room.getRoomNumber())
+                    .build();
         }
         return EmployeeHousekeepingTaskResponse.builder()
                 .id(task.getId().toString())
-                .roomNumber(roomNumber)
-                .roomName(roomNumber)
-                .floorName(floorName)
+                .room(roomRef)
                 .status(task.getStatus().name())
-                .assignedAt(task.getCreatedAt())
+                .note(task.getNote())
+                .createdAt(task.getCreatedAt())
                 .build();
     }
 }

@@ -152,6 +152,7 @@ public interface HousekeepingTaskRepository extends JpaRepository<HousekeepingTa
             SELECT t FROM HousekeepingTask t
             JOIN FETCH t.room r
             LEFT JOIN FETCH r.floor
+            LEFT JOIN FETCH t.property
             WHERE t.id = :id
               AND t.assignedEmployee.id = :employeeId
             """)
