@@ -76,9 +76,16 @@ public class AdminPropertyService {
     public AdminPropertyResponse createProperty(AdminCreatePropertyRequest req) {
         Property property = new Property();
         property.setName(req.getName().trim());
-        property.setAddress(req.getLocation().trim());
-        property.setStatus(Property.Status.ACTIVE);
-        property.setDescription(null);
+        property.setAddress(req.getAddress().trim());
+        
+        if (req.getStatus() != null && !req.getStatus().isBlank()) {
+            Property.Status status = parseStatus(req.getStatus());
+            property.setStatus(status != null ? status : Property.Status.ACTIVE);
+        } else {
+            property.setStatus(Property.Status.ACTIVE);
+        }
+        
+        property.setDescription(req.getDescription());
 
         Property saved = propertyRepository.save(property);
         return AdminPropertyResponse.fromEntity(saved, null);

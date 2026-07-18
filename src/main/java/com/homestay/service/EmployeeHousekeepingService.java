@@ -3,11 +3,14 @@ package com.homestay.service;
 import com.homestay.dto.response.EmployeeHousekeepingTaskResponse;
 import com.homestay.dto.response.PageResponse;
 import com.homestay.entity.HousekeepingTask;
+import com.homestay.entity.ManagerPropertyAssignment;
+import com.homestay.entity.Notification;
 import com.homestay.entity.Room;
 import com.homestay.entity.User;
 import com.homestay.exception.BusinessException;
 import com.homestay.exception.ResourceNotFoundException;
 import com.homestay.repository.HousekeepingTaskRepository;
+import com.homestay.repository.ManagerPropertyAssignmentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -29,6 +32,8 @@ import java.util.UUID;
 public class EmployeeHousekeepingService {
 
     private final HousekeepingTaskRepository housekeepingTaskRepository;
+    private final ManagerPropertyAssignmentRepository managerPropertyAssignmentRepository;
+    private final NotificationService notificationService;
 
     @Transactional(readOnly = true)
     public PageResponse<EmployeeHousekeepingTaskResponse> list(
@@ -59,6 +64,7 @@ public class EmployeeHousekeepingService {
         Room room = task.getRoom();
         room.setStatus(Room.Status.CLEANING_IN_PROGRESS);
         housekeepingTaskRepository.save(task);
+        notifyManagers(task);
     }
 
     @Transactional
@@ -73,6 +79,34 @@ public class EmployeeHousekeepingService {
         Room room = task.getRoom();
         room.setStatus(Room.Status.AVAILABLE);
         housekeepingTaskRepository.save(task);
+        notifyManagers(task);
+    }
+
+    private void notifyManagers(HousekeepingTask task) {
+        UUID propertyId = task.getProperty() != null
+                ? task.getProperty().getId()
+                : (task.getRoom() != null && task.getRoom().getProperty() != null
+                        ? task.getRoom().getProperty().getId()
+                        : null);
+        if (propertyId == null) {
+            return;
+        }
+        String roomNumber = task.getRoom() != null ? task.getRoom().getRoomNumber() : "?";
+        String status = task.getStatus().name();
+        List<ManagerPropertyAssignment> managers = managerPropertyAssignmentRepository
+                .findActiveByPropertyIds(List.of(propertyId), ManagerPropertyAssignment.Status.ACTIVE);
+        for (ManagerPropertyAssignment mpa : managers) {
+            if (mpa.getManager() == null) {
+                continue;
+            }
+            notificationService.sendNotification(
+                    mpa.getManager().getId(),
+                    Notification.Type.HOUSEKEEPING_TASK_UPDATED,
+                    "Housekeeping updated",
+                    String.format("Room %s housekeeping is now %s.", roomNumber, status),
+                    task.getId(),
+                    "HousekeepingTask");
+        }
     }
 
     private HousekeepingTask loadAssigned(UUID employeeId, UUID taskId) {

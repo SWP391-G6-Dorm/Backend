@@ -103,4 +103,7 @@ public interface DamageReportRepository extends JpaRepository<DamageReport, UUID
 
     // SCR-64: check inspection already has a damage report (unique constraint enforcement)
     boolean existsByInspection_Id(UUID inspectionId);
+
+    /** Used after DAMAGE_FEE payment succeeds — mark approved report as PAID. */
+    Optional<DamageReport> findFirstByBooking_IdAndStatus(UUID bookingId, DamageReport.Status status);
 }

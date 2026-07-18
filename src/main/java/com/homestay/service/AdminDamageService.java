@@ -39,6 +39,7 @@ public class AdminDamageService {
     private final DamageReportRepository damageReportRepository;
     private final AttachmentRepository attachmentRepository;
     private final NotificationService notificationService;
+    private final DamageFeeSettlementService damageFeeSettlementService;
 
     @Transactional(readOnly = true)
     public PageResponse<AdminDamageReportResponse> listEscalated(Pageable pageable) {
@@ -79,6 +80,12 @@ public class AdminDamageService {
                 || dr.getStatus() != DamageReport.Status.PENDING_APPROVAL) {
             throw new BusinessException("Bao cao khong o trang thai cho Admin duyet");
         }
+        if (dr.getApprovedBy() == null) {
+            throw new BusinessException("Bao cao chua duoc Manager escalate — khong the co-approve");
+        }
+        if (approvedFee == null || approvedFee.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("So tien duyet phai lon hon 0");
+        }
 
         dr.setStatus(DamageReport.Status.APPROVED);
         dr.setAdminApprover(admin);
@@ -86,6 +93,8 @@ public class AdminDamageService {
         if (dr.getApprovedAt() == null) {
             dr.setApprovedAt(LocalDateTime.now());
         }
+
+        damageFeeSettlementService.applyApprovedFee(dr, approvedFee);
 
         DamageReport saved = damageReportRepository.save(dr);
 

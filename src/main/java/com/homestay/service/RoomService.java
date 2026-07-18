@@ -26,7 +26,7 @@ import com.homestay.repository.PropertyRepository;
 import com.homestay.repository.ReviewRepository;
 import com.homestay.repository.RoomImageRepository;
 import com.homestay.repository.RoomRepository;
-import com.homestay.repository.spec.RoomPublicSpecifications;
+import com.homestay.util.SearchKeywordExpander;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -116,15 +116,24 @@ public class RoomService {
         String cleanSearch   = (search   != null && !search.isBlank())   ? search.trim()   : null;
         String cleanLocation = (location != null && !location.isBlank()) ? location.trim() : null;
         String keyword = cleanSearch != null ? cleanSearch : cleanLocation;
+        List<String> keywordTerms = SearchKeywordExpander.expand(keyword);
         String cleanRoomType = (roomType != null && !roomType.isBlank()) ? roomType.trim() : null;
 
-        Page<Room> page = roomRepository.findAll(
-                RoomPublicSpecifications.withFilters(
-                        keyword, statusEnum, propertyId, cleanRoomType,
-                        minPrice, maxPrice, capacity, checkIn, checkOut),
+        Page<Room> page = roomRepository.findPublicWithFilters(
+                getKeywordTerm(keywordTerms, 0),
+                getKeywordTerm(keywordTerms, 1),
+                getKeywordTerm(keywordTerms, 2),
+                getKeywordTerm(keywordTerms, 3),
+                getKeywordTerm(keywordTerms, 4),
+                statusEnum, propertyId, cleanRoomType,
+                minPrice, maxPrice, capacity, checkIn, checkOut,
                 pageable);
 
         return toPageResponse(page);
+    }
+
+    private static String getKeywordTerm(List<String> terms, int index) {
+        return index < terms.size() ? terms.get(index) : null;
     }
 
     // Khoảng giá thực tế cho slider bộ lọc

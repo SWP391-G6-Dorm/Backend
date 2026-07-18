@@ -23,12 +23,13 @@ public class Notification {
 
     // Các loại thông báo hệ thống gửi tự động
     public enum Type {
-        BOOKING_CONFIRMED,   // Sau khi manager duyệt cọc
-        BOOKING_CANCELLED,   // Sau khi hủy booking
-        CONTRACT_GENERATED,  // Sau khi tạo hợp đồng PDF
-        PAYMENT_CONFIRMED,   // Sau khi duyệt bất kỳ thanh toán nào
-        MAINTENANCE_UPDATED, // Sau khi manager cập nhật ticket
-        SYSTEM               // Thông báo chung
+        BOOKING_CONFIRMED,        // Sau khi manager duyệt cọc
+        BOOKING_CANCELLED,        // Sau khi hủy booking
+        CONTRACT_GENERATED,       // Sau khi tạo hợp đồng PDF
+        PAYMENT_CONFIRMED,        // Sau khi duyệt bất kỳ thanh toán nào
+        MAINTENANCE_UPDATED,      // Sau khi manager cập nhật ticket
+        HOUSEKEEPING_TASK_UPDATED,// Employee start/finish housekeeping (SCR-60)
+        SYSTEM                    // Thông báo chung
     }
 
     @Id
