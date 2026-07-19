@@ -6,11 +6,14 @@ import com.homestay.dto.response.PromotionResponse;
 import com.homestay.service.PromotionService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -33,6 +36,15 @@ public class PromotionController {
     @PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<ApiResponse<List<PromotionResponse>>> getAll() {
         return ResponseEntity.ok(ApiResponse.ok(promotionService.getAllPromotions()));
+    }
+
+    /** Manager: upload ảnh banner từ máy */
+    @PostMapping(value = "/api/manager/promotions/upload-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('MANAGER')")
+    public ResponseEntity<ApiResponse<Map<String, String>>> uploadImage(
+            @RequestParam("file") MultipartFile file) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok("Upload ảnh thành công", promotionService.uploadBannerImage(file)));
     }
 
     /** Manager: tạo banner mới */
