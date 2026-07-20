@@ -19,9 +19,13 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     List<Booking> findByCustomerOrderByCreatedAtDesc(User customer);
 
-    /** SCR-23 — Active bookings for create-maintenance dropdown (JOIN FETCH room+property). */
+    /**
+     * SCR-23 — Active bookings for create-maintenance dropdown (JOIN FETCH room+property).
+     * Avoid DISTINCT: SQL Server rejects DISTINCT when entity has TEXT columns
+     * (special_requests, cancel_reason). ManyToOne FETCH joins do not duplicate rows.
+     */
     @Query("""
-            SELECT DISTINCT b FROM Booking b
+            SELECT b FROM Booking b
             JOIN FETCH b.room r
             JOIN FETCH r.property
             WHERE b.customer.id = :customerId

@@ -1,5 +1,8 @@
 package com.homestay.controller;
 
+import com.homestay.dto.response.ApiResponse;
+import com.homestay.dto.response.ContractSummaryResponse;
+import com.homestay.dto.response.PageResponse;
 import com.homestay.entity.User;
 import com.homestay.service.ContractService;
 import org.springframework.http.HttpHeaders;
@@ -10,13 +13,15 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
 /**
  * Customer/Manager contract PDF download (SCR-21 drawer).
- * List: GET /api/v1/customers/me/contracts ({@link CustomerContractV1Controller}).
+ * List (canonical): GET /api/v1/customers/me/contracts ({@link CustomerContractV1Controller}).
+ * Alias: GET /api/v1/contracts/me — kept for older frontend clients.
  */
 @RestController
 @RequestMapping("/api/v1/contracts")
@@ -26,6 +31,20 @@ public class ContractV1Controller {
 
     public ContractV1Controller(ContractService contractService) {
         this.contractService = contractService;
+    }
+
+    @GetMapping("/me")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ResponseEntity<ApiResponse<PageResponse<ContractSummaryResponse>>> getMyContractsAlias(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String sort,
+            @AuthenticationPrincipal User currentUser) {
+        PageResponse<ContractSummaryResponse> data =
+                contractService.getMyContracts(currentUser, page, size, status, search, sort);
+        return ResponseEntity.ok(ApiResponse.ok(data));
     }
 
     @GetMapping("/{id}/pdf")
