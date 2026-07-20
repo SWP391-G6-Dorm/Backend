@@ -4,18 +4,15 @@ import com.homestay.dto.response.GlobalKpisResponse;
 import com.homestay.dto.response.GlobalRevenueReportResponse;
 import com.homestay.dto.response.GlobalRevenueReportResponse.MonthlyRevenue;
 import com.homestay.dto.response.RevenueReportResponse;
+import com.homestay.entity.Booking;
 import com.homestay.entity.Room;
 import com.homestay.entity.User;
-import com.homestay.entity.Room;
-import com.homestay.entity.Booking;
 import com.homestay.repository.BookingRepository;
 import com.homestay.repository.FloorRepository;
 import com.homestay.repository.PaymentRepository;
 import com.homestay.repository.PropertyRepository;
 import com.homestay.repository.RoomRepository;
 import com.homestay.repository.UserRepository;
-import com.homestay.repository.FloorRepository;
-import com.homestay.repository.RoomRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,8 +39,6 @@ public class AdminDashboardService {
     private final FloorRepository floorRepository;
     private final RoomRepository roomRepository;
     private final UserRepository userRepository;
-    private final FloorRepository floorRepository;
-    private final RoomRepository roomRepository;
     private final ReportService reportService;
 
     @Transactional(readOnly = true)
@@ -65,10 +60,6 @@ public class AdminDashboardService {
                 .availableRooms(roomRepository.countByStatus(Room.Status.AVAILABLE))
                 .occupiedRooms(roomRepository.countByStatus(Room.Status.OCCUPIED))
                 .totalCustomers(userRepository.countByRole(User.Role.CUSTOMER))
-                .totalFloors(floorRepository.count())
-                .totalRooms(roomRepository.count())
-                .availableRooms(roomRepository.countByStatus(Room.Status.AVAILABLE))
-                .occupiedRooms(roomRepository.countByStatus(Room.Status.OCCUPIED))
                 .upcomingCheckIns(bookingRepository.countByStatusAndCheckInDateGreaterThanEqual(Booking.Status.CONFIRMED, today))
                 .upcomingCheckOuts(bookingRepository.countByStatusAndCheckOutDateGreaterThanEqual(Booking.Status.CHECKED_IN, today))
                 .monthlyRevenue(monthlyRevenueSum != null ? monthlyRevenueSum.longValue() : 0L)

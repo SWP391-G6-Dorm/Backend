@@ -8,7 +8,7 @@ spring:
   datasource:
     url: ${DB_URL:jdbc:sqlserver://localhost:1433;databaseName=HomestayManagement;encrypt=true;trustServerCertificate=true;sendStringParametersAsUnicode=true}
     username: ${DB_USERNAME:sa}
-    password: ${DB_PASSWORD}
+    password: ${DB_PASSWORD:123}
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
 
   jpa:
@@ -60,7 +60,7 @@ server:
 # JWT config — secret must be supplied by the local environment
 app:
   jwt:
-    secret: ${JWT_SECRET}
+    secret: ${JWT_SECRET:dev-only-insecure-default-secret-change-in-production-must-be-long}
     expiration-ms: 900000        # 15 phút
     refresh-expiration-days: 30  # 30 ngày
 
@@ -82,7 +82,7 @@ app:
     enabled: true
 
 vnpay:
-  tmnCode: ${VNPAY_TMN_CODE:}
-  hashSecret: ${VNPAY_HASH_SECRET:}
+  tmnCode: ${VNPAY_TMN_CODE:YQ23CU6W}
+  hashSecret: ${VNPAY_HASH_SECRET:PSSN8ARRWUX199ZDTDY4Z6UTK1GCDOZB}
   url: ${VNPAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
   returnUrl: ${VNPAY_RETURN_URL:http://localhost:8080/api/payments/vnpay/return}
