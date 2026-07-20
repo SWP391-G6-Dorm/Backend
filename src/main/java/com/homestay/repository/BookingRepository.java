@@ -187,4 +187,10 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
           AND b.holdExpiresAt < :now
         """)
     List<Booking> findExpiredPendingDeposits(@Param("now") java.time.LocalDateTime now);
+
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.status = :status AND b.checkInDate >= :date")
+    long countByStatusAndCheckInDateGreaterThanEqual(@Param("status") Booking.Status status, @Param("date") LocalDate date);
+
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.status = :status AND b.checkOutDate >= :date")
+    long countByStatusAndCheckOutDateGreaterThanEqual(@Param("status") Booking.Status status, @Param("date") LocalDate date);
 }

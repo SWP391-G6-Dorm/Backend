@@ -38,4 +38,12 @@ public class GlobalKpisResponse {
 
     /** Tổng số khách hàng (role CUSTOMER) */
     private long totalCustomers;
+
+    private long totalFloors;
+    private long totalRooms;
+    private long availableRooms;
+    private long occupiedRooms;
+    private long upcomingCheckIns;
+    private long upcomingCheckOuts;
+    private long monthlyRevenue;
 }

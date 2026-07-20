@@ -6,18 +6,23 @@ import com.homestay.dto.response.GlobalRevenueReportResponse.MonthlyRevenue;
 import com.homestay.dto.response.RevenueReportResponse;
 import com.homestay.entity.Room;
 import com.homestay.entity.User;
+import com.homestay.entity.Room;
+import com.homestay.entity.Booking;
 import com.homestay.repository.BookingRepository;
 import com.homestay.repository.FloorRepository;
 import com.homestay.repository.PaymentRepository;
 import com.homestay.repository.PropertyRepository;
 import com.homestay.repository.RoomRepository;
 import com.homestay.repository.UserRepository;
+import com.homestay.repository.FloorRepository;
+import com.homestay.repository.RoomRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,11 +42,19 @@ public class AdminDashboardService {
     private final FloorRepository floorRepository;
     private final RoomRepository roomRepository;
     private final UserRepository userRepository;
+    private final FloorRepository floorRepository;
+    private final RoomRepository roomRepository;
     private final ReportService reportService;
 
     @Transactional(readOnly = true)
     public GlobalKpisResponse getGlobalKpis() {
         BigDecimal totalRevenue = paymentRepository.sumRevenueByType(null, null, null, null);
+        
+        LocalDate today = LocalDate.now();
+        YearMonth currentMonth = YearMonth.now();
+        java.time.LocalDateTime startOfMonth = currentMonth.atDay(1).atStartOfDay();
+        java.time.LocalDateTime endOfMonth = currentMonth.atEndOfMonth().atTime(23, 59, 59, 999_999_999);
+        BigDecimal monthlyRevenueSum = paymentRepository.sumRevenueByType(startOfMonth, endOfMonth, null, null);
 
         return GlobalKpisResponse.builder()
                 .totalRevenue(totalRevenue != null ? totalRevenue.longValue() : 0L)
@@ -52,6 +65,13 @@ public class AdminDashboardService {
                 .availableRooms(roomRepository.countByStatus(Room.Status.AVAILABLE))
                 .occupiedRooms(roomRepository.countByStatus(Room.Status.OCCUPIED))
                 .totalCustomers(userRepository.countByRole(User.Role.CUSTOMER))
+                .totalFloors(floorRepository.count())
+                .totalRooms(roomRepository.count())
+                .availableRooms(roomRepository.countByStatus(Room.Status.AVAILABLE))
+                .occupiedRooms(roomRepository.countByStatus(Room.Status.OCCUPIED))
+                .upcomingCheckIns(bookingRepository.countByStatusAndCheckInDateGreaterThanEqual(Booking.Status.CONFIRMED, today))
+                .upcomingCheckOuts(bookingRepository.countByStatusAndCheckOutDateGreaterThanEqual(Booking.Status.CHECKED_IN, today))
+                .monthlyRevenue(monthlyRevenueSum != null ? monthlyRevenueSum.longValue() : 0L)
                 .build();
     }
 
