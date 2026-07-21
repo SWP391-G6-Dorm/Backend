@@ -55,30 +55,35 @@ public interface RoomInspectionRepository extends JpaRepository<RoomInspection, 
             @Param("statuses") Collection<RoomInspection.Status> statuses,
             @Param("propertyIds") Collection<UUID> propertyIds);
 
-    // SCR-62: employee inspection workspace
+    // SCR-62: employee inspection workspace — unassigned OR assigned to current employee
     @Query(
             value = """
             SELECT ri FROM RoomInspection ri
             JOIN FETCH ri.room r
             JOIN FETCH ri.booking b
+            LEFT JOIN FETCH ri.inspectedBy ib
             WHERE ri.property.id IN :propertyIds
               AND ri.status IN :statuses
+              AND (ri.inspectedBy IS NULL OR ri.inspectedBy.id = :employeeId)
             ORDER BY ri.createdAt DESC
             """,
             countQuery = """
             SELECT COUNT(ri) FROM RoomInspection ri
             WHERE ri.property.id IN :propertyIds
               AND ri.status IN :statuses
+              AND (ri.inspectedBy IS NULL OR ri.inspectedBy.id = :employeeId)
             """)
     Page<RoomInspection> findForEmployee(
             @Param("propertyIds") Collection<UUID> propertyIds,
             @Param("statuses") Collection<RoomInspection.Status> statuses,
+            @Param("employeeId") UUID employeeId,
             Pageable pageable);
 
     @Query("""
             SELECT ri FROM RoomInspection ri
             JOIN FETCH ri.room r
             JOIN FETCH ri.booking b
+            LEFT JOIN FETCH ri.inspectedBy ib
             WHERE ri.id = :id
               AND ri.property.id IN :propertyIds
             """)

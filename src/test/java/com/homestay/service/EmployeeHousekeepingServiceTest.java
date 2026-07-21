@@ -123,6 +123,35 @@ class EmployeeHousekeepingServiceTest {
         assertThrows(ResourceNotFoundException.class, () -> service.start(employee, task.getId()));
     }
 
+    @Test
+    void finish_rejectsWrongAssignee() {
+        when(housekeepingTaskRepository.findByIdAndAssignedEmployeeId(task.getId(), employee.getId()))
+                .thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> service.finish(employee, task.getId()));
+        verify(housekeepingTaskRepository, never()).save(any());
+    }
+
+    @Test
+    void finish_rejectsCompleted() {
+        task.setStatus(HousekeepingTask.Status.COMPLETED);
+        when(housekeepingTaskRepository.findByIdAndAssignedEmployeeId(task.getId(), employee.getId()))
+                .thenReturn(Optional.of(task));
+
+        assertThrows(BusinessException.class, () -> service.finish(employee, task.getId()));
+        verify(housekeepingTaskRepository, never()).save(any());
+    }
+
+    @Test
+    void start_rejectsCancelled() {
+        task.setStatus(HousekeepingTask.Status.CANCELLED);
+        when(housekeepingTaskRepository.findByIdAndAssignedEmployeeId(task.getId(), employee.getId()))
+                .thenReturn(Optional.of(task));
+
+        assertThrows(BusinessException.class, () -> service.start(employee, task.getId()));
+        verify(housekeepingTaskRepository, never()).save(any());
+    }
+
     private void stubManagerNotify() {
         ManagerPropertyAssignment mpa = new ManagerPropertyAssignment();
         mpa.setManager(manager);

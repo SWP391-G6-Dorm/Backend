@@ -2,10 +2,12 @@ package com.homestay.controller;
 
 import com.homestay.dto.request.EmployeeInspectionResultRequest;
 import com.homestay.dto.response.ApiResponse;
+import com.homestay.dto.response.ChecklistItemDefinitionResponse;
 import com.homestay.dto.response.EmployeeInspectionResponse;
 import com.homestay.dto.response.PageResponse;
 import com.homestay.entity.User;
 import com.homestay.service.EmployeeInspectionService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -43,11 +46,17 @@ public class EmployeeInspectionController {
         return ResponseEntity.ok(ApiResponse.ok(data));
     }
 
+    /** Danh mục checklist đang active (global seed). */
+    @GetMapping("/checklist-items")
+    public ResponseEntity<ApiResponse<List<ChecklistItemDefinitionResponse>>> checklistItems() {
+        return ResponseEntity.ok(ApiResponse.ok(employeeInspectionService.listActiveChecklistItems()));
+    }
+
     @PostMapping("/{id}/pass")
     public ResponseEntity<ApiResponse<Map<String, Object>>> pass(
             @AuthenticationPrincipal User currentUser,
             @PathVariable UUID id,
-            @RequestBody(required = false) EmployeeInspectionResultRequest request) {
+            @Valid @RequestBody(required = false) EmployeeInspectionResultRequest request) {
         employeeInspectionService.pass(currentUser, id, request);
         return ResponseEntity.ok(ApiResponse.ok("Inspection passed", Collections.emptyMap()));
     }
@@ -56,7 +65,7 @@ public class EmployeeInspectionController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> fail(
             @AuthenticationPrincipal User currentUser,
             @PathVariable UUID id,
-            @RequestBody(required = false) EmployeeInspectionResultRequest request) {
+            @Valid @RequestBody(required = false) EmployeeInspectionResultRequest request) {
         employeeInspectionService.fail(currentUser, id, request);
         return ResponseEntity.ok(ApiResponse.ok("Inspection failed", Collections.emptyMap()));
     }

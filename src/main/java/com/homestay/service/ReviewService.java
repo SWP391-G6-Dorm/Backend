@@ -47,10 +47,7 @@ public class ReviewService {
             throw new BusinessException("Đơn đặt phòng này đã được đánh giá");
         }
 
-        String comment = request.getComment().trim();
-        if (comment.length() < 20 || comment.length() > 200) {
-            throw new BusinessException("Bình luận phải từ 20 đến 200 ký tự");
-        }
+        String comment = normalizeComment(request.getComment());
 
         Review review = new Review();
         review.setBooking(booking);
@@ -92,10 +89,7 @@ public class ReviewService {
         Review review = reviewRepository.findByIdAndCustomer_Id(id, currentUser.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đánh giá"));
 
-        String comment = request.getComment().trim();
-        if (comment.length() < 20 || comment.length() > 200) {
-            throw new BusinessException("Bình luận phải từ 20 đến 200 ký tự");
-        }
+        String comment = normalizeComment(request.getComment());
 
         review.setRating(request.getRating());
         review.setComment(comment);
@@ -112,5 +106,17 @@ public class ReviewService {
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đánh giá"));
 
         reviewRepository.delete(review);
+    }
+
+    private String normalizeComment(String comment) {
+        if (comment == null || comment.isBlank()) {
+            return null;
+        }
+
+        String normalized = comment.trim();
+        if (normalized.length() < 20 || normalized.length() > 200) {
+            throw new BusinessException("Bình luận phải từ 20 đến 200 ký tự nếu được cung cấp");
+        }
+        return normalized;
     }
 }

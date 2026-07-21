@@ -1,6 +1,7 @@
 package com.homestay.controller;
 
 import com.homestay.dto.response.ApiResponse;
+import com.homestay.dto.response.ContractDetailResponse;
 import com.homestay.dto.response.ContractSummaryResponse;
 import com.homestay.dto.response.PageResponse;
 import com.homestay.entity.User;
@@ -12,16 +13,19 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Map;
 import java.util.UUID;
 
 /**
- * Customer/Manager contract PDF download (SCR-21 drawer).
- * List (canonical): GET /api/v1/customers/me/contracts ({@link CustomerContractV1Controller}).
- * Alias: GET /api/v1/contracts/me — kept for older frontend clients.
+ * Contract v1 endpoints shared by Customer (SCR-21) and Manager (SCR-38).
+ * List (customer canonical): GET /api/v1/customers/me/contracts
+ * List (manager canonical): GET /api/v1/managers/contracts
  */
 @RestController
 @RequestMapping("/api/v1/contracts")
@@ -47,8 +51,17 @@ public class ContractV1Controller {
         return ResponseEntity.ok(ApiResponse.ok(data));
     }
 
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'MANAGER', 'ADMIN')")
+    public ResponseEntity<ApiResponse<ContractDetailResponse>> getContractDetail(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal User currentUser) {
+        ContractDetailResponse data = contractService.getContractDetail(id, currentUser);
+        return ResponseEntity.ok(ApiResponse.ok(data));
+    }
+
     @GetMapping("/{id}/pdf")
-    @PreAuthorize("hasAnyRole('CUSTOMER', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'MANAGER', 'ADMIN')")
     public ResponseEntity<byte[]> downloadContractPdf(
             @PathVariable UUID id,
             @AuthenticationPrincipal User currentUser) {
@@ -62,5 +75,16 @@ public class ContractV1Controller {
         return ResponseEntity.ok()
                 .headers(headers)
                 .body(pdfBytes);
+    }
+
+    @PostMapping("/{id}/resend")
+    @PreAuthorize("hasRole('MANAGER')")
+    public ResponseEntity<ApiResponse<Void>> resendContractEmail(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal User currentUser,
+            @RequestBody(required = false) Map<String, String> request) {
+        String targetEmail = request != null ? request.get("email") : null;
+        contractService.resendContractEmail(id, currentUser, targetEmail);
+        return ResponseEntity.ok(ApiResponse.ok("Gửi email thành công"));
     }
 }

@@ -8,6 +8,8 @@ import jakarta.validation.constraints.NotBlank;
 
 import jakarta.validation.constraints.NotNull;
 
+import jakarta.validation.constraints.Pattern;
+
 import jakarta.validation.constraints.Size;
 
 import lombok.Data;
@@ -26,7 +28,7 @@ public class CreateEmployeeRequest {
 
     @NotBlank(message = "Họ tên không được để trống")
 
-    @Size(max = 200)
+    @Size(max = 200, message = "Họ tên không được vượt quá 200 ký tự")
 
     private String fullName;
 
@@ -36,11 +38,15 @@ public class CreateEmployeeRequest {
 
     @Email(message = "Email không hợp lệ")
 
+    @Size(max = 255, message = "Email không được vượt quá 255 ký tự")
+
     private String email;
 
 
 
-    @Size(max = 20)
+    @Size(max = 20, message = "Số điện thoại không được vượt quá 20 chữ số")
+
+    @Pattern(regexp = "^\\d*$", message = "Số điện thoại chỉ được chứa chữ số")
 
     private String phone;
 

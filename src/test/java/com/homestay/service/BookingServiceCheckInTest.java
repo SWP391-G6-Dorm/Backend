@@ -9,6 +9,7 @@ import com.homestay.entity.User;
 import com.homestay.exception.ConflictException;
 import com.homestay.repository.BookingCheckVerificationRepository;
 import com.homestay.repository.BookingRepository;
+import com.homestay.repository.ContractRepository;
 import com.homestay.repository.ManagerPropertyAssignmentRepository;
 import com.homestay.repository.PaymentRepository;
 import com.homestay.repository.ReviewRepository;
@@ -42,6 +43,7 @@ class BookingServiceCheckInTest {
     @Mock RoomInspectionRepository roomInspectionRepository;
     @Mock BookingCheckVerificationRepository checkVerificationRepository;
     @Mock HousekeepingTaskService housekeepingTaskService;
+    @Mock ContractRepository contractRepository;
 
     private BookingService service;
     private User manager;
@@ -63,6 +65,7 @@ class BookingServiceCheckInTest {
                 roomInspectionRepository,
                 checkVerificationRepository,
                 housekeepingTaskService,
+                contractRepository,
                 10L);
         manager = TestFixtures.user(User.Role.MANAGER);
         customer = TestFixtures.user(User.Role.CUSTOMER);

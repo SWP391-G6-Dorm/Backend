@@ -9,6 +9,7 @@ import com.homestay.dto.response.ManagerBookingDetailResponse;
 import com.homestay.dto.response.PageResponse;
 import com.homestay.entity.Booking;
 import com.homestay.entity.BookingCheckVerification;
+import com.homestay.entity.Contract;
 import com.homestay.entity.Payment;
 import com.homestay.entity.Property;
 import com.homestay.entity.Room;
@@ -19,6 +20,7 @@ import com.homestay.exception.ConflictException;
 import com.homestay.exception.ForbiddenException;
 import com.homestay.repository.BookingCheckVerificationRepository;
 import com.homestay.repository.BookingRepository;
+import com.homestay.repository.ContractRepository;
 import com.homestay.repository.ManagerPropertyAssignmentRepository;
 import com.homestay.repository.PaymentRepository;
 import com.homestay.repository.RoomInspectionRepository;
@@ -62,9 +64,12 @@ public class BookingService {
     private final RoomInspectionRepository roomInspectionRepository;
     private final BookingCheckVerificationRepository checkVerificationRepository;
     private final HousekeepingTaskService housekeepingTaskService;
+    private final ContractRepository contractRepository;
     private final long holdTimeoutMinutes;
 
     private static final long MAX_ID_DOC_BYTES = 5L * 1024 * 1024;
+    private static final int CUSTOMER_CANCEL_REFUND_PERCENT = 50;
+    private static final int MANAGER_CANCEL_REFUND_PERCENT = 100;
 
     public BookingService(BookingRepository bookingRepository,
                           NotificationService notificationService,
@@ -76,6 +81,7 @@ public class BookingService {
                           RoomInspectionRepository roomInspectionRepository,
                           BookingCheckVerificationRepository checkVerificationRepository,
                           HousekeepingTaskService housekeepingTaskService,
+                          ContractRepository contractRepository,
                           @org.springframework.beans.factory.annotation.Value("${app.booking.hold-timeout-minutes:10}") long holdTimeoutMinutes) {
         this.bookingRepository = bookingRepository;
         this.notificationService = notificationService;
@@ -87,6 +93,7 @@ public class BookingService {
         this.roomInspectionRepository = roomInspectionRepository;
         this.checkVerificationRepository = checkVerificationRepository;
         this.housekeepingTaskService = housekeepingTaskService;
+        this.contractRepository = contractRepository;
         this.holdTimeoutMinutes = holdTimeoutMinutes > 0 ? holdTimeoutMinutes : 10;
     }
 
@@ -493,45 +500,79 @@ public class BookingService {
             throw new ForbiddenException("Không có quyền hủy booking này");
         }
 
-        if (booking.getStatus() != Booking.Status.PENDING_DEPOSIT
-                && booking.getStatus() != Booking.Status.CONFIRMED) {
-            throw new IllegalArgumentException("Booking không thể hủy ở trạng thái hiện tại");
+        assertCancellableStatus(booking);
+        return buildCancellationPreview(booking, CUSTOMER_CANCEL_REFUND_PERCENT,
+                "Hủy bởi khách hàng: hoàn 50% số tiền đã thanh toán.");
+    }
+
+    /** SCR-69 — Manager cancel preview (100% refund). */
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public CancellationPreviewResponse getManagerCancellationPreview(User manager, UUID id) {
+        Booking booking = findBookingOrThrow(id);
+        scopeValidator.validateManagerAccess(manager, booking.getRoom().getProperty().getId());
+        assertCancellableStatus(booking);
+        return buildCancellationPreview(booking, MANAGER_CANCEL_REFUND_PERCENT,
+                "Hủy bởi Manager (lỗi hệ thống/bất khả kháng): hoàn 100% số tiền đã thanh toán.");
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public void cancelBooking(UUID id, User currentUser) {
+        cancelBooking(id, currentUser, null);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public void cancelBooking(UUID id, User currentUser, String reason) {
+        if (currentUser.getRole() == User.Role.MANAGER) {
+            throw new ForbiddenException("Manager phải hủy qua API /api/v1/manager/bookings/{id}/cancel");
+        }
+        if (currentUser.getRole() != User.Role.CUSTOMER) {
+            throw new ForbiddenException("Không có quyền hủy booking này");
         }
 
+        Booking booking = bookingRepository.findById(id)
+                .orElseThrow(() -> new com.homestay.exception.ResourceNotFoundException("Booking không tồn tại"));
+
+        if (!booking.getCustomer().getId().equals(currentUser.getId())) {
+            throw new ForbiddenException("Không có quyền hủy booking này");
+        }
+
+        assertCancellableStatus(booking);
+        applyCancellation(booking, currentUser, reason, CUSTOMER_CANCEL_REFUND_PERCENT,
+                "Booking cancelled by customer (50% refund of paid amount).");
+    }
+
+    /** SCR-69 — Manager-initiated cancel with required reason and 100% refund. */
+    @org.springframework.transaction.annotation.Transactional
+    public ManagerBookingDetailResponse cancelBookingForManager(User manager, UUID id, String cancelReason) {
+        if (cancelReason == null || cancelReason.isBlank()) {
+            throw new BusinessException("Lý do hủy (cancelReason) là bắt buộc");
+        }
+        if (cancelReason.trim().length() > 500) {
+            throw new BusinessException("Lý do hủy tối đa 500 ký tự");
+        }
+
+        Booking booking = findBookingOrThrow(id);
+        scopeValidator.validateManagerAccess(manager, booking.getRoom().getProperty().getId());
+        assertCancellableStatus(booking);
+
+        applyCancellation(booking, manager, cancelReason.trim(), MANAGER_CANCEL_REFUND_PERCENT,
+                "Booking cancelled by manager (100% refund of paid amount).");
+
+        return buildManagerDetail(booking);
+    }
+
+    private CancellationPreviewResponse buildCancellationPreview(Booking booking, int refundPercent, String policyText) {
         long daysUntilCheckIn = java.time.temporal.ChronoUnit.DAYS.between(
-                java.time.LocalDate.now(), booking.getCheckInDate());
+                LocalDate.now(), booking.getCheckInDate());
         if (daysUntilCheckIn < 0) {
             daysUntilCheckIn = 0;
         }
 
-        java.math.BigDecimal depositPaid = java.math.BigDecimal.ZERO;
-        List<Payment> payments = paymentRepository.findByBookingIdOrderByCreatedAtDesc(id);
-        java.util.Optional<Payment> paidDeposit = payments.stream()
-                .filter(p -> p.getType() == Payment.Type.DEPOSIT && p.getStatus() == Payment.Status.PAID)
-                .findFirst();
-        if (paidDeposit.isPresent()) {
-            depositPaid = paidDeposit.get().getAmount();
-        } else if (booking.getStatus() != Booking.Status.PENDING_DEPOSIT) {
-            depositPaid = booking.getDepositAmount() != null ? booking.getDepositAmount() : java.math.BigDecimal.ZERO;
-        }
-
-        int refundPercent;
-        String policyText;
-        if (daysUntilCheckIn >= 7) {
-            refundPercent = 100;
-            policyText = "Hủy trước 7 ngày check-in: hoàn 100% tiền cọc đã thanh toán.";
-        } else if (daysUntilCheckIn >= 3) {
-            refundPercent = 50;
-            policyText = "Hủy từ 3–6 ngày trước check-in: hoàn 50% tiền cọc đã thanh toán.";
-        } else {
-            refundPercent = 0;
-            policyText = "Hủy dưới 3 ngày trước check-in: không hoàn tiền cọc.";
-        }
-
-        java.math.BigDecimal refundAmount = depositPaid
-                .multiply(java.math.BigDecimal.valueOf(refundPercent))
-                .divide(java.math.BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
-        java.math.BigDecimal forfeitAmount = depositPaid.subtract(refundAmount);
+        BigDecimal paidAmount = sumPaidAmount(booking.getId());
+        BigDecimal refundAmount = paidAmount
+                .multiply(BigDecimal.valueOf(refundPercent))
+                .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
+        BigDecimal forfeitAmount = paidAmount.subtract(refundAmount);
 
         return new CancellationPreviewResponse(
                 (int) daysUntilCheckIn,
@@ -542,47 +583,80 @@ public class BookingService {
         );
     }
 
-    @org.springframework.transaction.annotation.Transactional
-    public void cancelBooking(UUID id, User currentUser) {
-        cancelBooking(id, currentUser, null);
+    private BigDecimal sumPaidAmount(UUID bookingId) {
+        return paymentRepository.findByBookingIdOrderByCreatedAtDesc(bookingId).stream()
+                .filter(p -> p.getStatus() == Payment.Status.PAID)
+                .map(Payment::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    @org.springframework.transaction.annotation.Transactional
-    public void cancelBooking(UUID id, User currentUser, String reason) {
-        Booking booking = bookingRepository.findById(id)
-                .orElseThrow(() -> new com.homestay.exception.ResourceNotFoundException("Booking không tồn tại"));
-
-        boolean isManager = currentUser.getRole() == User.Role.MANAGER;
-        if (!isManager && !booking.getCustomer().getId().equals(currentUser.getId())) {
-            throw new ForbiddenException("Không có quyền hủy booking này");
-        }
-
-        if (booking.getStatus() == Booking.Status.CANCELLED) {
+    private void assertCancellableStatus(Booking booking) {
+        Booking.Status status = booking.getStatus();
+        if (status == Booking.Status.CANCELLED) {
             throw new IllegalArgumentException("Booking đã bị hủy trước đó");
         }
-        if (booking.getStatus() == Booking.Status.CHECKED_IN || booking.getStatus() == Booking.Status.CHECKED_OUT) {
-            throw new IllegalArgumentException("Không thể hủy booking đang check-in hoặc đã check-out");
+        if (status == Booking.Status.CHECKED_IN
+                || status == Booking.Status.CHECKED_OUT
+                || status == Booking.Status.PENDING_INSPECTION
+                || status == Booking.Status.PENDING_DAMAGE_PAYMENT
+                || status == Booking.Status.NO_SHOW) {
+            throw new IllegalArgumentException("Không thể hủy booking sau khi check-in đã bắt đầu hoặc ở trạng thái hiện tại");
         }
+        if (status != Booking.Status.PENDING_DEPOSIT && status != Booking.Status.CONFIRMED) {
+            throw new IllegalArgumentException("Booking không thể hủy ở trạng thái hiện tại");
+        }
+    }
+
+    private void applyCancellation(Booking booking, User actor, String reason, int refundPercent, String notifyDetail) {
+        CancellationPreviewResponse preview = buildCancellationPreview(booking, refundPercent, notifyDetail);
 
         booking.setStatus(Booking.Status.CANCELLED);
         booking.setCancelledAt(java.time.LocalDateTime.now());
-        if (!isManager) {
-            booking.setCancelledBy(currentUser);
-        }
+        booking.setCancelledBy(actor);
         if (reason != null && !reason.isBlank()) {
             booking.setCancelReason(reason.trim());
         }
         bookingRepository.save(booking);
-        // Inventory is date-range based; only clear stale ops hold flags if no other blocking bookings
+
+        applyPaymentRefunds(booking, refundPercent);
+        cancelActiveContract(booking.getId());
         releaseStaleRoomHoldStatus(booking.getRoom());
 
+        String shortId = booking.getId().toString().substring(0, 8).toUpperCase();
         notificationService.sendNotification(
                 booking.getCustomer().getId(),
                 com.homestay.entity.Notification.Type.BOOKING_CANCELLED,
                 "Booking Cancelled",
-                "Your booking #" + booking.getId().toString().substring(0, 8).toUpperCase() + " has been cancelled.",
+                "Your booking #" + shortId + " has been cancelled. Refund: "
+                        + preview.getRefundPercent() + "% (" + preview.getRefundAmount() + " VND).",
                 booking.getId(), "Booking"
         );
+    }
+
+    private void applyPaymentRefunds(Booking booking, int refundPercent) {
+        List<Payment> payments = paymentRepository.findByBookingIdOrderByCreatedAtDesc(booking.getId());
+        for (Payment payment : payments) {
+            if (payment.getStatus() == Payment.Status.PAID) {
+                payment.setStatus(Payment.Status.REFUNDED);
+                String note = "Cancel refund " + refundPercent + "% of paid amount";
+                payment.setVerificationNote(note);
+            } else if (payment.getStatus() == Payment.Status.PENDING) {
+                payment.setStatus(Payment.Status.FAILED);
+                payment.setVerificationNote("Cancelled with booking — pending payment voided");
+            }
+        }
+        if (!payments.isEmpty()) {
+            paymentRepository.saveAll(payments);
+        }
+    }
+
+    private void cancelActiveContract(UUID bookingId) {
+        contractRepository.findByBookingId(bookingId).ifPresent(contract -> {
+            if (contract.getStatus() == Contract.Status.ACTIVE) {
+                contract.setStatus(Contract.Status.CANCELLED);
+                contractRepository.save(contract);
+            }
+        });
     }
 
     @org.springframework.transaction.annotation.Transactional

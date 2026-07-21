@@ -68,6 +68,7 @@ class EmployeeInspectionServiceTest {
         when(roomInspectionRepository.findForEmployee(
                 eq(List.of(property.getId())),
                 eq(List.of(RoomInspection.Status.PENDING)),
+                eq(employee.getId()),
                 any()))
                 .thenReturn(new PageImpl<>(List.of(pending), PageRequest.of(0, 10), 1));
 
@@ -120,7 +121,23 @@ class EmployeeInspectionServiceTest {
 
         BusinessException ex = assertThrows(
                 BusinessException.class, () -> service.fail(employee, pending.getId(), req));
-        assertEquals("Pass/Fail chi khi inspection da gan cho ban", ex.getMessage());
+        assertEquals("Pass/Fail only when the inspection is assigned to you", ex.getMessage());
+    }
+
+    @Test
+    void pass_blocksWhenPendingButAssignedToAnotherEmployee() {
+        pending.setStatus(RoomInspection.Status.PENDING);
+        pending.setInspectedBy(otherEmployee);
+
+        when(employeePropertyAssignmentRepository.findPropertyIdsByEmployeeIdAndStatus(
+                employee.getId(), EmployeePropertyAssignment.Status.ACTIVE))
+                .thenReturn(List.of(property.getId()));
+        when(roomInspectionRepository.findByIdAndPropertyIdIn(pending.getId(), List.of(property.getId())))
+                .thenReturn(Optional.of(pending));
+
+        BusinessException ex = assertThrows(
+                BusinessException.class, () -> service.pass(employee, pending.getId(), null));
+        assertEquals("Pass/Fail only when the inspection is assigned to you", ex.getMessage());
     }
 
     @Test
