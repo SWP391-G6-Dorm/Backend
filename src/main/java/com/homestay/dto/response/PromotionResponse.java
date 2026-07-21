@@ -18,7 +18,11 @@ public class PromotionResponse {
     private String ctaUrl;
     private String imageUrl;
     private String colorTheme;
-    private boolean isActive;
+    /**
+     * Boolean (not primitive): Lombok generates getIsActive() so Jackson emits
+     * "isActive" — primitive boolean would emit "active" and break the FE.
+     */
+    private Boolean isActive;
     private int sortOrder;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -33,7 +37,7 @@ public class PromotionResponse {
         r.setCtaUrl(p.getCtaUrl());
         r.setImageUrl(p.getImageUrl());
         r.setColorTheme(p.getColorTheme());
-        r.setActive(p.isActive());
+        r.setIsActive(p.isActive());
         r.setSortOrder(p.getSortOrder());
         r.setCreatedAt(p.getCreatedAt());
         r.setUpdatedAt(p.getUpdatedAt());

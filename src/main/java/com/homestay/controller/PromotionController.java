@@ -31,43 +31,43 @@ public class PromotionController {
         return ResponseEntity.ok(ApiResponse.ok(promotionService.getActivePromotions()));
     }
 
-    /** Manager: xem tất cả banner (kể cả inactive) */
-    @GetMapping("/api/manager/promotions")
-    @PreAuthorize("hasRole('MANAGER')")
+    /** Admin: xem tất cả banner (kể cả inactive) */
+    @GetMapping("/api/admin/banners")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<List<PromotionResponse>>> getAll() {
         return ResponseEntity.ok(ApiResponse.ok(promotionService.getAllPromotions()));
     }
 
-    /** Manager: upload ảnh banner từ máy */
-    @PostMapping(value = "/api/manager/promotions/upload-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('MANAGER')")
+    /** Admin: upload ảnh banner từ máy */
+    @PostMapping(value = "/api/admin/banners/upload-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<Map<String, String>>> uploadImage(
             @RequestParam("file") MultipartFile file) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.ok("Upload ảnh thành công", promotionService.uploadBannerImage(file)));
     }
 
-    /** Manager: tạo banner mới */
-    @PostMapping("/api/manager/promotions")
-    @PreAuthorize("hasRole('MANAGER')")
+    /** Admin: tạo banner mới */
+    @PostMapping("/api/admin/banners")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<PromotionResponse>> create(
             @Valid @RequestBody PromotionRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.ok("Tạo banner thành công", promotionService.create(req)));
     }
 
-    /** Manager: cập nhật banner */
-    @PutMapping("/api/manager/promotions/{id}")
-    @PreAuthorize("hasRole('MANAGER')")
+    /** Admin: cập nhật banner */
+    @PutMapping("/api/admin/banners/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<PromotionResponse>> update(
             @PathVariable UUID id,
             @Valid @RequestBody PromotionRequest req) {
         return ResponseEntity.ok(ApiResponse.ok("Cập nhật thành công", promotionService.update(id, req)));
     }
 
-    /** Manager: xóa banner */
-    @DeleteMapping("/api/manager/promotions/{id}")
-    @PreAuthorize("hasRole('MANAGER')")
+    /** Admin: xóa banner */
+    @DeleteMapping("/api/admin/banners/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID id) {
         promotionService.delete(id);
         return ResponseEntity.ok(ApiResponse.ok("Xóa banner thành công"));

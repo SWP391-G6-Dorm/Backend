@@ -86,7 +86,8 @@ public class LandingController {
         boolean hasDates = checkIn != null && checkOut != null;
         String roomStatus;
         if (status != null && !status.isBlank()) {
-            roomStatus = status;
+            // "ALL" — FE yêu cầu bỏ lọc status (tìm theo địa điểm/homestay, hiện cả phòng đang giữ chỗ)
+            roomStatus = "ALL".equalsIgnoreCase(status) ? null : status;
         } else if (hasDates) {
             roomStatus = null;
         } else {
