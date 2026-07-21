@@ -42,6 +42,29 @@ public interface PropertyRepository extends JpaRepository<Property, UUID> {
             @Param("status") Property.Status status,
             Pageable pageable);
 
+    /**
+     * SCR-46 — Admin Property list: keyword (name/address) + status + assigned manager.
+     * Null/blank filters are ignored.
+     */
+    @Query("""
+            SELECT DISTINCT p FROM Property p
+            WHERE (:keyword IS NULL OR :keyword = ''
+                   OR LOWER(p.name) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                   OR LOWER(p.address) LIKE LOWER(CONCAT('%', :keyword, '%')))
+              AND (:status IS NULL OR p.status = :status)
+              AND (:managerId IS NULL OR EXISTS (
+                    SELECT 1 FROM ManagerPropertyAssignment mpa
+                    WHERE mpa.property = p
+                      AND mpa.manager.id = :managerId
+                      AND mpa.status = 'ACTIVE'
+                  ))
+            """)
+    Page<Property> searchForAdmin(
+            @Param("keyword") String keyword,
+            @Param("status") Property.Status status,
+            @Param("managerId") UUID managerId,
+            Pageable pageable);
+
     // SCR-37: Load property với floors và rooms (eager) — tránh N+1
     @Query("SELECT DISTINCT p FROM Property p " +
            "LEFT JOIN FETCH p.floors f " +
