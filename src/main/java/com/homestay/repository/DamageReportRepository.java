@@ -86,19 +86,33 @@ public interface DamageReportRepository extends JpaRepository<DamageReport, UUID
     // SCR-63: danh sách damage report của Employee (qua inspection.inspectedBy).
     // EntityGraph to-one — tránh JOIN FETCH + Pageable (pagination sai / in-memory).
     // Items load lazy trong @Transactional (không FETCH collection trên Page).
-    @EntityGraph(attributePaths = {"inspection", "inspection.room", "inspection.inspectedBy"})
+    @EntityGraph(attributePaths = {
+            "inspection", "inspection.room", "inspection.inspectedBy", "booking"
+    })
     @Query(
             value = """
             SELECT dr FROM DamageReport dr
             WHERE dr.inspection.inspectedBy.id = :employeeId
+              AND (:status IS NULL OR dr.status = :status)
+              AND (:search IS NULL OR :search = '' OR
+                   LOWER(dr.inspection.room.roomNumber) LIKE LOWER(CONCAT('%', :search, '%')) OR
+                   LOWER(CAST(dr.id AS string)) LIKE LOWER(CONCAT('%', :search, '%')) OR
+                   LOWER(CAST(dr.booking.id AS string)) LIKE LOWER(CONCAT('%', :search, '%')))
             ORDER BY dr.createdAt DESC
             """,
             countQuery = """
             SELECT COUNT(dr) FROM DamageReport dr
             WHERE dr.inspection.inspectedBy.id = :employeeId
+              AND (:status IS NULL OR dr.status = :status)
+              AND (:search IS NULL OR :search = '' OR
+                   LOWER(dr.inspection.room.roomNumber) LIKE LOWER(CONCAT('%', :search, '%')) OR
+                   LOWER(CAST(dr.id AS string)) LIKE LOWER(CONCAT('%', :search, '%')) OR
+                   LOWER(CAST(dr.booking.id AS string)) LIKE LOWER(CONCAT('%', :search, '%')))
             """)
     Page<DamageReport> findForEmployee(
             @Param("employeeId") UUID employeeId,
+            @Param("status") DamageReport.Status status,
+            @Param("search") String search,
             Pageable pageable);
 
     // SCR-64: check inspection already has a damage report (unique constraint enforcement)

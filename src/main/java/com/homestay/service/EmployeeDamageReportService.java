@@ -54,12 +54,21 @@ public class EmployeeDamageReportService {
     private String uploadDir;
 
     @Transactional(readOnly = true)
-    public PageResponse<EmployeeDamageReportResponse> list(User employee, Pageable pageable) {
-        Page<DamageReport> page = damageReportRepository.findForEmployee(employee.getId(), pageable);
-        // Touch items collection while session is open (EntityGraph không fetch items trên Page).
+    public PageResponse<EmployeeDamageReportResponse> list(
+            User employee,
+            DamageReport.Status status,
+            String search,
+            Pageable pageable) {
+        String normalizedSearch = StringUtils.hasText(search) ? search.trim() : null;
+        Page<DamageReport> page = damageReportRepository.findForEmployee(
+                employee.getId(), status, normalizedSearch, pageable);
+        // Touch items + booking while session is open (EntityGraph không fetch items trên Page).
         page.getContent().forEach(dr -> {
             if (dr.getItems() != null) {
                 dr.getItems().size();
+            }
+            if (dr.getBooking() != null) {
+                dr.getBooking().getId();
             }
         });
         List<EmployeeDamageReportResponse> content = page.getContent().stream()

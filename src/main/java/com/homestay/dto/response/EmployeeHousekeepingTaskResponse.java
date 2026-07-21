@@ -17,35 +17,37 @@ import java.time.LocalDateTime;
 public class EmployeeHousekeepingTaskResponse {
 
     private String id;
-    private RoomRef room;
+    private String roomId;
+    private String roomNumber;
+    private String floorName;
     private String status;
     private String note;
     private LocalDateTime createdAt;
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class RoomRef {
-        private String id;
-        private String roomNumber;
-    }
+    private LocalDateTime startedAt;
+    private LocalDateTime completedAt;
 
     public static EmployeeHousekeepingTaskResponse fromEntity(HousekeepingTask task) {
         Room room = task.getRoom();
-        RoomRef roomRef = null;
+        String roomId = null;
+        String roomNumber = null;
+        String floorName = null;
         if (room != null) {
-            roomRef = RoomRef.builder()
-                    .id(room.getId() != null ? room.getId().toString() : null)
-                    .roomNumber(room.getRoomNumber())
-                    .build();
+            roomId = room.getId() != null ? room.getId().toString() : null;
+            roomNumber = room.getRoomNumber();
+            if (room.getFloor() != null && room.getFloor().getFloorNumber() != null) {
+                floorName = "Tang " + room.getFloor().getFloorNumber();
+            }
         }
         return EmployeeHousekeepingTaskResponse.builder()
                 .id(task.getId().toString())
-                .room(roomRef)
+                .roomId(roomId)
+                .roomNumber(roomNumber)
+                .floorName(floorName)
                 .status(task.getStatus().name())
                 .note(task.getNote())
                 .createdAt(task.getCreatedAt())
+                .startedAt(task.getStartedAt())
+                .completedAt(task.getCompletedAt())
                 .build();
     }
 }

@@ -44,6 +44,8 @@ public class ManagerBookingDetailResponse {
 
     private boolean canCheckIn;
     private boolean canCheckOut;
+    private boolean canCancel;
+    private String checkInBlockedReason;
     private String checkOutBlockedReason;
 
     private List<BookingDetailResponse.PaymentInfo> payments;
@@ -76,6 +78,8 @@ public class ManagerBookingDetailResponse {
                 isReviewed,
                 false,
                 false,
+                false,
+                null,
                 null,
                 payments
         );
@@ -91,8 +95,25 @@ public class ManagerBookingDetailResponse {
         LocalDate today = LocalDate.now();
         Booking.Status status = booking.getStatus();
 
-        resp.setCanCheckIn(status == Booking.Status.CONFIRMED
-                && !booking.getCheckInDate().isAfter(today));
+        resp.setCanCancel(status == Booking.Status.PENDING_DEPOSIT
+                || status == Booking.Status.CONFIRMED);
+
+        if (status == Booking.Status.CONFIRMED) {
+            if (booking.getCheckInDate().isAfter(today)) {
+                resp.setCanCheckIn(false);
+                resp.setCheckInBlockedReason(
+                        "Chưa đến ngày nhận phòng (" + booking.getCheckInDate() + "). Nút sẽ mở từ ngày này.");
+            } else {
+                resp.setCanCheckIn(true);
+                resp.setCheckInBlockedReason(null);
+            }
+        } else if (status == Booking.Status.PENDING_DEPOSIT) {
+            resp.setCanCheckIn(false);
+            resp.setCheckInBlockedReason("Khách chưa thanh toán / xác nhận tiền cọc — booking vẫn Chờ cọc.");
+        } else {
+            resp.setCanCheckIn(false);
+            resp.setCheckInBlockedReason(null);
+        }
 
         switch (status) {
             case CHECKED_IN -> {

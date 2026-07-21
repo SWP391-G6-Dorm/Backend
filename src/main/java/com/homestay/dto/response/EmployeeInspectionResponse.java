@@ -21,6 +21,10 @@ public class EmployeeInspectionResponse {
     private String status;
     private LocalDateTime inspectedAt;
 
+    /** Inspector currently assigned / claimed; null = Unassigned (Claim). */
+    private String inspectorId;
+    private String inspectorName;
+
     /** Convenience fields kept for existing employee UI consumers. */
     private String roomId;
     private String roomNumber;
@@ -40,12 +44,16 @@ public class EmployeeInspectionResponse {
     public static EmployeeInspectionResponse fromEntity(RoomInspection ri) {
         String roomId = ri.getRoom() != null ? ri.getRoom().getId().toString() : null;
         String roomNumber = ri.getRoom() != null ? ri.getRoom().getRoomNumber() : null;
+        String inspectorId = ri.getInspectedBy() != null ? ri.getInspectedBy().getId().toString() : null;
+        String inspectorName = ri.getInspectedBy() != null ? ri.getInspectedBy().getFullName() : null;
         return EmployeeInspectionResponse.builder()
                 .id(ri.getId().toString())
                 .room(RoomRef.builder().id(roomId).roomNumber(roomNumber).build())
                 .bookingId(ri.getBooking() != null ? ri.getBooking().getId().toString() : null)
                 .status(ri.getStatus().name())
                 .inspectedAt(ri.getInspectedAt())
+                .inspectorId(inspectorId)
+                .inspectorName(inspectorName)
                 .roomId(roomId)
                 .roomNumber(roomNumber)
                 .roomName(roomNumber)

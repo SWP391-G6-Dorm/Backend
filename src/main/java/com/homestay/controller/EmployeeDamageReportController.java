@@ -5,7 +5,9 @@ import com.homestay.dto.response.ApiResponse;
 import com.homestay.dto.response.EmployeeDamageReportResponse;
 import com.homestay.dto.response.EmployeeEligibleDamageRoomResponse;
 import com.homestay.dto.response.PageResponse;
+import com.homestay.entity.DamageReport;
 import com.homestay.entity.User;
+import com.homestay.exception.BusinessException;
 import com.homestay.service.EmployeeDamageReportService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +17,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -38,12 +41,26 @@ public class EmployeeDamageReportController {
     public ResponseEntity<ApiResponse<PageResponse<EmployeeDamageReportResponse>>> list(
             @AuthenticationPrincipal User currentUser,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "15") int size) {
+            @RequestParam(defaultValue = "15") int size,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String search) {
         int safePage = Math.max(page, 0);
         int safeSize = Math.min(Math.max(size, 1), 100);
-        PageResponse<EmployeeDamageReportResponse> data =
-                employeeDamageReportService.list(currentUser, PageRequest.of(safePage, safeSize));
+        DamageReport.Status statusFilter = parseStatus(status);
+        PageResponse<EmployeeDamageReportResponse> data = employeeDamageReportService.list(
+                currentUser, statusFilter, search, PageRequest.of(safePage, safeSize));
         return ResponseEntity.ok(ApiResponse.ok(data));
+    }
+
+    private static DamageReport.Status parseStatus(String status) {
+        if (!StringUtils.hasText(status)) {
+            return null;
+        }
+        try {
+            return DamageReport.Status.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException("Trạng thái không hợp lệ");
+        }
     }
 
     /** SCR-64 — Rooms with FAILED inspection that still need a damage report. */

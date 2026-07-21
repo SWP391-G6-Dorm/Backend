@@ -11,18 +11,33 @@ import java.util.UUID;
 
 public interface ContractRepository extends JpaRepository<Contract, UUID> {
 
-    // Manager: lấy tất cả, filter theo status + search
+    // Legacy/admin-style unscoped list (kept for compatibility)
     @Query("SELECT c FROM Contract c WHERE " +
            "(:status IS NULL OR c.status = :status) AND " +
            "(:search IS NULL OR (" +
            "LOWER(c.customer.fullName) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(CAST(c.booking.id AS string)) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
            "LOWER(c.room.roomNumber) LIKE LOWER(CONCAT('%', :search, '%'))))")
     Page<Contract> findAllWithFilters(@Param("status") Contract.Status status, @Param("search") String search, Pageable pageable);
 
-    // Customer: chỉ lấy contract của mình, filter theo status + search (tên phòng / cơ sở)
+    /** SCR-38 — Manager contracts scoped to assigned properties. */
+    @Query("SELECT c FROM Contract c WHERE c.room.property.id IN :propertyIds " +
+           "AND (:status IS NULL OR c.status = :status) " +
+           "AND (:search IS NULL OR (" +
+           "LOWER(c.customer.fullName) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(CAST(c.booking.id AS string)) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(c.room.roomNumber) LIKE LOWER(CONCAT('%', :search, '%'))))")
+    Page<Contract> findByPropertyIdsWithFilters(
+            @Param("propertyIds") java.util.List<UUID> propertyIds,
+            @Param("status") Contract.Status status,
+            @Param("search") String search,
+            Pageable pageable);
+
+    // Customer: own contracts; search bookingId / room / property
     @Query("SELECT c FROM Contract c WHERE c.customer.id = :customerId " +
            "AND (:status IS NULL OR c.status = :status) " +
            "AND (:search IS NULL OR (" +
+           "LOWER(CAST(c.booking.id AS string)) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
            "LOWER(c.room.roomNumber) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
            "LOWER(c.room.property.name) LIKE LOWER(CONCAT('%', :search, '%'))))")
     Page<Contract> findByCustomerWithFilters(

@@ -14,7 +14,6 @@ public class CreateReviewRequest {
     @Max(value = 5, message = "Đánh giá tối đa là 5 sao")
     private Integer rating;
 
-    @NotBlank(message = "Nội dung bình luận không được để trống")
-    @Size(min = 20, max = 200, message = "Bình luận phải từ 20 đến 200 ký tự")
+    @Size(max = 200, message = "Bình luận không được vượt quá 200 ký tự")
     private String comment;
 }
