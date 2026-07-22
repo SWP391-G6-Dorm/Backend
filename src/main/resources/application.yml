@@ -68,9 +68,9 @@ app:
   google:
     client-id: ${GOOGLE_CLIENT_ID:dev-google-client-id}
 
-  # Thư mục lưu file upload
+  # Thư mục lưu file upload — có thể override bằng UPLOAD_DIR (đường dẫn tuyệt đối)
   upload:
-    dir: uploads/
+    dir: ${UPLOAD_DIR:uploads/}
 
   # Booking hold (Pending Deposit unpaid timeout)
   booking:

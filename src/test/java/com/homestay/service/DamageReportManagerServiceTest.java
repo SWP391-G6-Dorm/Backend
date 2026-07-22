@@ -8,6 +8,7 @@ import com.homestay.entity.Property;
 import com.homestay.entity.Room;
 import com.homestay.entity.RoomInspection;
 import com.homestay.entity.User;
+import com.homestay.repository.AttachmentRepository;
 import com.homestay.repository.DamageReportRepository;
 import com.homestay.repository.UserRepository;
 import com.homestay.support.TestFixtures;
@@ -34,6 +35,7 @@ import static org.mockito.Mockito.when;
 class DamageReportManagerServiceTest {
 
     @Mock DamageReportRepository damageReportRepository;
+    @Mock AttachmentRepository attachmentRepository;
     @Mock UserRepository userRepository;
     @Mock ReportPropertyScopeValidator scopeValidator;
     @Mock NotificationService notificationService;

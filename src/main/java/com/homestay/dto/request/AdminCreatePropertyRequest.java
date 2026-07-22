@@ -6,7 +6,7 @@ import lombok.Data;
 
 /**
  * Request DTO cho SCR-47 — Admin tạo Property.
- * Frontend chỉ gửi name + location (location map sang Property.address).
+ * FE gửi name + address (+ optional description, status).
  */
 @Data
 public class AdminCreatePropertyRequest {
@@ -19,7 +19,9 @@ public class AdminCreatePropertyRequest {
     @Size(max = 500, message = "Địa chỉ tối đa 500 ký tự")
     private String address;
 
+    @Size(max = 5000, message = "Mô tả tối đa 5000 ký tự")
     private String description;
 
+    /** ACTIVE | INACTIVE — mặc định ACTIVE nếu bỏ trống. */
     private String status;
 }
