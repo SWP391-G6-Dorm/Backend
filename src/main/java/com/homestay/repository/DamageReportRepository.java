@@ -29,7 +29,9 @@ public interface DamageReportRepository extends JpaRepository<DamageReport, UUID
               AND (:status IS NULL OR dr.status = :status)
               AND (:escalated IS NULL OR dr.requiresAdminEscalation = :escalated)
               AND (:search IS NULL OR :search = '' OR
-                   LOWER(r.roomNumber) LIKE LOWER(CONCAT('%', :search, '%')))
+                   LOWER(r.roomNumber) LIKE LOWER(CONCAT('%', :search, '%')) OR
+                   LOWER(CAST(dr.id AS string)) LIKE LOWER(CONCAT('%', :search, '%')) OR
+                   LOWER(CAST(b.id AS string)) LIKE LOWER(CONCAT('%', :search, '%')))
             ORDER BY dr.createdAt DESC
             """,
             countQuery = """
@@ -38,7 +40,9 @@ public interface DamageReportRepository extends JpaRepository<DamageReport, UUID
               AND (:status IS NULL OR dr.status = :status)
               AND (:escalated IS NULL OR dr.requiresAdminEscalation = :escalated)
               AND (:search IS NULL OR :search = '' OR
-                   LOWER(dr.inspection.room.roomNumber) LIKE LOWER(CONCAT('%', :search, '%')))
+                   LOWER(dr.inspection.room.roomNumber) LIKE LOWER(CONCAT('%', :search, '%')) OR
+                   LOWER(CAST(dr.id AS string)) LIKE LOWER(CONCAT('%', :search, '%')) OR
+                   LOWER(CAST(dr.booking.id AS string)) LIKE LOWER(CONCAT('%', :search, '%')))
             """)
     Page<DamageReport> findForManagerBoard(
             @Param("propertyId") UUID propertyId,

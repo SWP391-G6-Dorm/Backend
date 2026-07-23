@@ -1,5 +1,7 @@
 package com.homestay.service;
 
+import com.homestay.dto.request.AdminCreateManagerRequest;
+import com.homestay.dto.request.AdminUpdateManagerRequest;
 import com.homestay.dto.request.AdminUpdateUserRequest;
 import com.homestay.dto.response.AdminCustomerBookingSummaryResponse;
 import com.homestay.dto.response.AdminUserResponse;
@@ -16,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,6 +40,64 @@ public class AdminUserService {
     private final ManagerPropertyAssignmentRepository managerAssignmentRepository;
     private final BookingRepository bookingRepository;
     private final PaymentRepository paymentRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    /** SCR-50 — Admin tạo tài khoản Manager (ACTIVE ngay, không cần OTP). */
+    @Transactional
+    public AdminUserResponse createManager(AdminCreateManagerRequest req) {
+        String email = req.getEmail().trim().toLowerCase();
+        if (userRepository.existsByEmail(email)) {
+            throw new BusinessException("Email đã được sử dụng. Vui lòng dùng email khác.");
+        }
+
+        User user = new User();
+        user.setFullName(req.getFullName().trim());
+        user.setEmail(email);
+        user.setPhone(req.getPhone() != null && !req.getPhone().isBlank() ? req.getPhone().trim() : null);
+        user.setPasswordHash(passwordEncoder.encode(req.getPassword()));
+        user.setRole(User.Role.MANAGER);
+        user.setStatus(User.Status.ACTIVE);
+
+        User saved = userRepository.save(user);
+        return AdminUserResponse.fromEntity(saved, 0, null, null);
+    }
+
+    /** SCR-50 — Admin sửa tài khoản Manager (hồ sơ + mật khẩu tùy chọn + trạng thái). */
+    @Transactional
+    public AdminUserResponse updateManager(UUID id, AdminUpdateManagerRequest req) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy user với ID: " + id));
+        if (user.getRole() != User.Role.MANAGER) {
+            throw new BusinessException("Chỉ có thể sửa tài khoản Manager qua endpoint này");
+        }
+
+        String email = req.getEmail().trim().toLowerCase();
+        if (!email.equalsIgnoreCase(user.getEmail()) && userRepository.existsByEmail(email)) {
+            throw new BusinessException("Email đã được sử dụng. Vui lòng dùng email khác.");
+        }
+
+        user.setFullName(req.getFullName().trim());
+        user.setEmail(email);
+        user.setPhone(req.getPhone() != null && !req.getPhone().isBlank() ? req.getPhone().trim() : null);
+
+        if (req.getPassword() != null && !req.getPassword().isBlank()) {
+            if (req.getPassword().length() < 8 || req.getPassword().length() > 100) {
+                throw new BusinessException("Mật khẩu phải từ 8 đến 100 ký tự");
+            }
+            user.setPasswordHash(passwordEncoder.encode(req.getPassword()));
+        }
+
+        if (req.getStatus() != null && !req.getStatus().isBlank()) {
+            User.Status status = parseStatus(req.getStatus());
+            if (status == null || (status != User.Status.ACTIVE && status != User.Status.INACTIVE)) {
+                throw new BusinessException("Chỉ hỗ trợ trạng thái Đang hoạt động hoặc Vô hiệu hóa");
+            }
+            user.setStatus(status);
+        }
+
+        User saved = userRepository.save(user);
+        return toDirectoryResponse(saved);
+    }
 
     @Transactional(readOnly = true)
     public PageResponse<AdminUserResponse> listUsers(String role, String status, String keyword, Pageable pageable) {

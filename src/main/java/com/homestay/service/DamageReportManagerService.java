@@ -5,11 +5,14 @@ import com.homestay.dto.request.RejectDamageReportRequest;
 import com.homestay.dto.response.DamageReportDetailResponse;
 import com.homestay.dto.response.DamageReportSummaryResponse;
 import com.homestay.dto.response.PageResponse;
+import com.homestay.entity.Attachment;
+import com.homestay.entity.DamageItem;
 import com.homestay.entity.DamageReport;
 import com.homestay.entity.Notification;
 import com.homestay.entity.User;
 import com.homestay.exception.BusinessException;
 import com.homestay.exception.ResourceNotFoundException;
+import com.homestay.repository.AttachmentRepository;
 import com.homestay.repository.DamageReportRepository;
 import com.homestay.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -32,7 +36,10 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class DamageReportManagerService {
 
+    private static final String ATTACHMENT_ENTITY_TYPE = "DamageItem";
+
     private final DamageReportRepository damageReportRepository;
+    private final AttachmentRepository attachmentRepository;
     private final UserRepository userRepository;
     private final ReportPropertyScopeValidator scopeValidator;
     private final NotificationService notificationService;
@@ -66,7 +73,7 @@ public class DamageReportManagerService {
         DamageReport dr = damageReportRepository.findDetailById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy báo cáo hư hại"));
         scopeValidator.validateManagerAccess(manager, dr.getInspection().getProperty().getId());
-        return DamageReportDetailResponse.fromEntity(dr);
+        return toDetail(dr);
     }
 
     @Transactional
@@ -74,6 +81,9 @@ public class DamageReportManagerService {
         DamageReport dr = loadPendingForManager(manager, id);
 
         if (Boolean.TRUE.equals(dr.getRequiresAdminEscalation())) {
+            if (dr.getApprovedBy() != null) {
+                throw new BusinessException("Báo cáo đã được chuyển Admin duyệt");
+            }
             // Fee > 5M: Manager xác nhận rồi chuyển Admin đồng phê duyệt (SCR-53). Giữ PENDING_APPROVAL.
             dr.setApprovedBy(manager);
             dr.setApprovedAt(LocalDateTime.now());
@@ -82,7 +92,7 @@ public class DamageReportManagerService {
             }
             DamageReport saved = damageReportRepository.save(dr);
             notifyAdmins(saved);
-            return DamageReportDetailResponse.fromEntity(saved);
+            return toDetail(saved);
         }
 
         dr.setStatus(DamageReport.Status.APPROVED);
@@ -97,12 +107,15 @@ public class DamageReportManagerService {
 
         DamageReport saved = damageReportRepository.save(dr);
         notifyCustomer(saved, "Báo cáo hư hại của bạn đã được duyệt bồi thường.");
-        return DamageReportDetailResponse.fromEntity(saved);
+        return toDetail(saved);
     }
 
     @Transactional
     public DamageReportDetailResponse rejectForManager(User manager, UUID id, RejectDamageReportRequest req) {
         DamageReport dr = loadPendingForManager(manager, id);
+        if (Boolean.TRUE.equals(dr.getRequiresAdminEscalation()) && dr.getApprovedBy() != null) {
+            throw new BusinessException("Báo cáo đã chuyển Admin — không thể từ chối tại Manager");
+        }
 
         dr.setStatus(DamageReport.Status.DRAFT);
         dr.setNote(req.getReason().trim());
@@ -119,7 +132,20 @@ public class DamageReportManagerService {
                     saved.getId(),
                     "DamageReport");
         }
-        return DamageReportDetailResponse.fromEntity(saved);
+        return toDetail(saved);
+    }
+
+    private DamageReportDetailResponse toDetail(DamageReport dr) {
+        return DamageReportDetailResponse.fromEntity(dr, loadAttachments(dr));
+    }
+
+    private List<Attachment> loadAttachments(DamageReport dr) {
+        List<UUID> itemIds = dr.getItems() == null ? Collections.emptyList()
+                : dr.getItems().stream().map(DamageItem::getId).toList();
+        if (itemIds.isEmpty()) {
+            return List.of();
+        }
+        return attachmentRepository.findByEntityTypeAndEntityIdIn(ATTACHMENT_ENTITY_TYPE, itemIds);
     }
 
     private DamageReport loadPendingForManager(User manager, UUID id) {

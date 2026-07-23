@@ -82,6 +82,12 @@ public class AdminPropertyController {
                 .body(ApiResponse.ok("Tạo property thành công", data));
     }
 
+    /** SCR-48 — Lấy chi tiết property để pre-fill form Edit. */
+    @GetMapping("/{id}")
+    public ResponseEntity<ApiResponse<AdminPropertyResponse>> getById(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(adminPropertyService.getProperty(id)));
+    }
+
     /** SCR-48 — Cập nhật property (partial). */
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<AdminPropertyResponse>> update(

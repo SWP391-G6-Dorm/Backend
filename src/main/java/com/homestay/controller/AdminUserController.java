@@ -1,5 +1,7 @@
 package com.homestay.controller;
 
+import com.homestay.dto.request.AdminCreateManagerRequest;
+import com.homestay.dto.request.AdminUpdateManagerRequest;
 import com.homestay.dto.request.AdminUpdateUserRequest;
 import com.homestay.dto.response.AdminCustomerBookingSummaryResponse;
 import com.homestay.dto.response.AdminUserResponse;
@@ -10,10 +12,12 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -49,6 +53,25 @@ public class AdminUserController {
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<AdminUserResponse>> getById(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.ok(adminUserService.getById(id)));
+    }
+
+    /** SCR-50 — Admin tạo tài khoản Manager. */
+    @PostMapping("/managers")
+    public ResponseEntity<ApiResponse<AdminUserResponse>> createManager(
+            @Valid @RequestBody AdminCreateManagerRequest req) {
+        AdminUserResponse data = adminUserService.createManager(req);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok("Tạo tài khoản Manager thành công", data));
+    }
+
+    /** SCR-50 — Admin sửa tài khoản Manager. */
+    @PutMapping("/managers/{id}")
+    public ResponseEntity<ApiResponse<AdminUserResponse>> updateManager(
+            @PathVariable UUID id,
+            @Valid @RequestBody AdminUpdateManagerRequest req) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                "Cập nhật tài khoản Manager thành công",
+                adminUserService.updateManager(id, req)));
     }
 
     /** SCR-51 — Lịch sử đặt phòng của Customer (Drawer). */

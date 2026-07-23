@@ -9,7 +9,6 @@ import com.homestay.service.AdminDamageService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -38,7 +37,9 @@ public class AdminDamageController {
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        // Không truyền Sort: query findEscalatedForAdmin đã ORDER BY createdAt DESC.
+        // Sort + ORDER BY trùng cột → SQL Server báo lỗi duplicate order by column.
+        PageRequest pageable = PageRequest.of(page, size);
         return ResponseEntity.ok(ApiResponse.ok(adminDamageService.listEscalated(pageable)));
     }
 

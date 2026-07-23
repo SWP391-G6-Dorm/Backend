@@ -89,10 +89,28 @@ public class AdminPropertyService {
             property.setStatus(Property.Status.ACTIVE);
         }
         
-        property.setDescription(req.getDescription());
+        property.setDescription(
+                req.getDescription() != null && !req.getDescription().isBlank()
+                        ? req.getDescription().trim()
+                        : null);
 
         Property saved = propertyRepository.save(property);
         return AdminPropertyResponse.fromEntity(saved, null);
+    }
+
+    @Transactional(readOnly = true)
+    public AdminPropertyResponse getProperty(UUID id) {
+        Property property = propertyRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy property với ID: " + id));
+
+        User manager = assignmentRepository
+                .findActiveByPropertyIds(List.of(property.getId()), ManagerPropertyAssignment.Status.ACTIVE)
+                .stream()
+                .findFirst()
+                .map(ManagerPropertyAssignment::getManager)
+                .orElse(null);
+
+        return AdminPropertyResponse.fromEntity(property, manager);
     }
 
     @Transactional
@@ -102,6 +120,13 @@ public class AdminPropertyService {
 
         if (req.getName() != null && !req.getName().isBlank()) {
             property.setName(req.getName().trim());
+        }
+        if (req.getAddress() != null && !req.getAddress().isBlank()) {
+            property.setAddress(req.getAddress().trim());
+        }
+        if (req.getDescription() != null) {
+            property.setDescription(
+                    req.getDescription().isBlank() ? null : req.getDescription().trim());
         }
         if (req.getStatus() != null) {
             Property.Status status = parseStatus(req.getStatus());
