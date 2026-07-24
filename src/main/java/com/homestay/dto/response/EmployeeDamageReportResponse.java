@@ -19,6 +19,7 @@ import java.util.List;
 public class EmployeeDamageReportResponse {
 
     private String id;
+    private String bookingId;
     private String roomName;
     private String status;
     private List<Item> items;
@@ -54,8 +55,13 @@ public class EmployeeDamageReportResponse {
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
         }
 
+        String bookingId = dr.getBooking() != null && dr.getBooking().getId() != null
+                ? dr.getBooking().getId().toString()
+                : null;
+
         return EmployeeDamageReportResponse.builder()
                 .id(dr.getId().toString())
+                .bookingId(bookingId)
                 .roomName(roomName)
                 .status(dr.getStatus() != null ? dr.getStatus().name() : null)
                 .items(items)

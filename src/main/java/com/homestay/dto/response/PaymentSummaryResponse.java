@@ -20,20 +20,8 @@ public class PaymentSummaryResponse {
     private Payment.Status status;
     private LocalDateTime paidAt;
     private LocalDateTime createdAt;
-    /** Present when a PaymentReceipt is attached (api-spec SCR-36). */
-    private ReceiptInfo receipt;
-
-    @Data
-    @Builder
-    public static class ReceiptInfo {
-        private String fileUrl;
-    }
 
     public static PaymentSummaryResponse fromEntity(Payment payment) {
-        ReceiptInfo receipt = null;
-        if (payment.getReceipt() != null && payment.getReceipt().getFileUrl() != null) {
-            receipt = ReceiptInfo.builder().fileUrl(payment.getReceipt().getFileUrl()).build();
-        }
         return PaymentSummaryResponse.builder()
                 .id(payment.getId())
                 .bookingId(payment.getBooking().getId())
@@ -44,7 +32,6 @@ public class PaymentSummaryResponse {
                 .status(payment.getStatus())
                 .paidAt(payment.getPaidAt())
                 .createdAt(payment.getCreatedAt())
-                .receipt(receipt)
                 .build();
     }
 }

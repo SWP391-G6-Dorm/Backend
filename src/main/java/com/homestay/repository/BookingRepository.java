@@ -19,9 +19,13 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     List<Booking> findByCustomerOrderByCreatedAtDesc(User customer);
 
-    /** SCR-23 — Active bookings for create-maintenance dropdown (JOIN FETCH room+property). */
+    /**
+     * SCR-23 — Active bookings for create-maintenance dropdown (JOIN FETCH room+property).
+     * Avoid DISTINCT: SQL Server rejects DISTINCT when entity has TEXT columns
+     * (special_requests, cancel_reason). ManyToOne FETCH joins do not duplicate rows.
+     */
     @Query("""
-            SELECT DISTINCT b FROM Booking b
+            SELECT b FROM Booking b
             JOIN FETCH b.room r
             JOIN FETCH r.property
             WHERE b.customer.id = :customerId
@@ -80,8 +84,7 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     Page<Booking> findAllWithFilters(@Param("status") Booking.Status status, @Param("search") String search, Pageable pageable);
 
     /** SCR-34 — Manager list scoped by assigned properties. */
-    @Query(
-        value = """
+    @Query("""
         SELECT b FROM Booking b
         JOIN b.room r
         JOIN b.customer c
@@ -94,22 +97,7 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
                OR LOWER(CAST(b.id AS string)) LIKE LOWER(CONCAT('%', :search, '%')))
           AND (:checkInFrom IS NULL OR b.checkInDate >= :checkInFrom)
           AND (:checkInTo IS NULL OR b.checkInDate <= :checkInTo)
-        """,
-        countQuery = """
-        SELECT COUNT(b) FROM Booking b
-        JOIN b.room r
-        JOIN b.customer c
-        WHERE r.property.id IN :propertyIds
-          AND (:status IS NULL OR b.status = :status)
-          AND (:search IS NULL OR
-               LOWER(c.fullName) LIKE LOWER(CONCAT('%', :search, '%'))
-               OR LOWER(COALESCE(c.phone, '')) LIKE LOWER(CONCAT('%', :search, '%'))
-               OR LOWER(r.roomNumber) LIKE LOWER(CONCAT('%', :search, '%'))
-               OR LOWER(CAST(b.id AS string)) LIKE LOWER(CONCAT('%', :search, '%')))
-          AND (:checkInFrom IS NULL OR b.checkInDate >= :checkInFrom)
-          AND (:checkInTo IS NULL OR b.checkInDate <= :checkInTo)
-        """
-    )
+        """)
     Page<Booking> findForManagerWithFilters(
             @Param("propertyIds") List<UUID> propertyIds,
             @Param("status") Booking.Status status,
@@ -203,4 +191,10 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
           AND b.holdExpiresAt < :now
         """)
     List<Booking> findExpiredPendingDeposits(@Param("now") java.time.LocalDateTime now);
+
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.status = :status AND b.checkInDate >= :date")
+    long countByStatusAndCheckInDateGreaterThanEqual(@Param("status") Booking.Status status, @Param("date") LocalDate date);
+
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.status = :status AND b.checkOutDate >= :date")
+    long countByStatusAndCheckOutDateGreaterThanEqual(@Param("status") Booking.Status status, @Param("date") LocalDate date);
 }

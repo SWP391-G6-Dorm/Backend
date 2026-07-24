@@ -1,6 +1,5 @@
 package com.homestay.dto.response;
 
-import com.homestay.entity.Floor;
 import com.homestay.entity.HousekeepingTask;
 import com.homestay.entity.Room;
 import lombok.AllArgsConstructor;
@@ -18,29 +17,37 @@ import java.time.LocalDateTime;
 public class EmployeeHousekeepingTaskResponse {
 
     private String id;
+    private String roomId;
     private String roomNumber;
-    private String roomName;
     private String floorName;
     private String status;
-    private LocalDateTime assignedAt;
+    private String note;
+    private LocalDateTime createdAt;
+    private LocalDateTime startedAt;
+    private LocalDateTime completedAt;
 
     public static EmployeeHousekeepingTaskResponse fromEntity(HousekeepingTask task) {
         Room room = task.getRoom();
-        String roomNumber = room != null ? room.getRoomNumber() : null;
-        Floor floor = room != null ? room.getFloor() : null;
+        String roomId = null;
+        String roomNumber = null;
         String floorName = null;
-        if (floor != null) {
-            floorName = floor.getFloorNumber() != null
-                    ? "Floor " + floor.getFloorNumber()
-                    : null;
+        if (room != null) {
+            roomId = room.getId() != null ? room.getId().toString() : null;
+            roomNumber = room.getRoomNumber();
+            if (room.getFloor() != null && room.getFloor().getFloorNumber() != null) {
+                floorName = "Tang " + room.getFloor().getFloorNumber();
+            }
         }
         return EmployeeHousekeepingTaskResponse.builder()
                 .id(task.getId().toString())
+                .roomId(roomId)
                 .roomNumber(roomNumber)
-                .roomName(roomNumber)
                 .floorName(floorName)
                 .status(task.getStatus().name())
-                .assignedAt(task.getCreatedAt())
+                .note(task.getNote())
+                .createdAt(task.getCreatedAt())
+                .startedAt(task.getStartedAt())
+                .completedAt(task.getCompletedAt())
                 .build();
     }
 }

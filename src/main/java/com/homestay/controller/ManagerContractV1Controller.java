@@ -1,10 +1,10 @@
 package com.homestay.controller;
 
 import com.homestay.dto.response.ApiResponse;
+import com.homestay.dto.response.ContractSummaryResponse;
 import com.homestay.dto.response.PageResponse;
-import com.homestay.dto.response.PaymentSummaryResponse;
 import com.homestay.entity.User;
-import com.homestay.service.PaymentService;
+import com.homestay.service.ContractService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -15,32 +15,28 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Backward-compatible alias for older FE clients using singular {@code /api/v1/manager/payments}.
- * Prefer {@link ManagerPaymentV1Controller} ({@code /api/v1/managers/payments}).
+ * SCR-38 — Contract Management (canonical: GET /api/v1/managers/contracts).
  */
 @RestController
-@RequestMapping("/api/v1/manager/payments")
+@RequestMapping("/api/v1/managers")
 @RequiredArgsConstructor
-public class ManagerPaymentAliasController {
+public class ManagerContractV1Controller {
 
-    private final PaymentService paymentService;
+    private final ContractService contractService;
 
-    @GetMapping
+    @GetMapping("/contracts")
     @PreAuthorize("hasRole('MANAGER')")
-    public ResponseEntity<ApiResponse<PageResponse<PaymentSummaryResponse>>> list(
+    public ResponseEntity<ApiResponse<PageResponse<ContractSummaryResponse>>> list(
             @AuthenticationPrincipal User currentUser,
             @RequestParam(required = false) String propertyId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) String type,
-            @RequestParam(required = false) String method,
             @RequestParam(required = false) String search,
-            @RequestParam(defaultValue = "createdAt,desc") String sort) {
+            @RequestParam(required = false) String sort) {
 
-        PageResponse<PaymentSummaryResponse> data = paymentService.getPaymentsForManagerScoped(
-                currentUser, propertyId, status, type, method, search, page, size, sort);
-
+        PageResponse<ContractSummaryResponse> data = contractService.getManagerContracts(
+                currentUser, propertyId, page, size, status, search, sort);
         return ResponseEntity.ok(ApiResponse.ok(data));
     }
 }

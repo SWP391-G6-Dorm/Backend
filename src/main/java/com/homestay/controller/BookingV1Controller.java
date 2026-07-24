@@ -99,7 +99,7 @@ public class BookingV1Controller {
         if (currentUser == null) {
             throw new ForbiddenException("Vui lòng đăng nhập để hủy đặt phòng");
         }
-        String reason = request != null ? request.getReason() : null;
+        String reason = request != null ? request.resolvedReason() : null;
         bookingService.cancelBooking(id, currentUser, reason);
         return ResponseEntity.ok(ApiResponse.ok("Hủy đặt phòng thành công"));
     }

@@ -5,7 +5,6 @@ import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -17,7 +16,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public interface RoomRepository extends JpaRepository<Room, UUID>, JpaSpecificationExecutor<Room> {
+public interface RoomRepository extends JpaRepository<Room, UUID> {
 
     // Tìm phòng theo property
     Page<Room> findByPropertyId(UUID propertyId, Pageable pageable);
@@ -93,17 +92,46 @@ public interface RoomRepository extends JpaRepository<Room, UUID>, JpaSpecificat
     // Public listing filter — SCR-07/SCR-09 (keyword: tên/địa chỉ homestay, số phòng, loại phòng)
     @Query("""
         SELECT r FROM Room r
-        WHERE (:keyword IS NULL OR
-               LOWER(r.roomNumber) LIKE LOWER(CONCAT('%', :keyword, '%')) OR
-               LOWER(r.roomType)   LIKE LOWER(CONCAT('%', :keyword, '%')) OR
-               LOWER(r.property.name) LIKE LOWER(CONCAT('%', :keyword, '%')) OR
-               LOWER(r.property.address) LIKE LOWER(CONCAT('%', :keyword, '%')))
-        AND (:status    IS NULL OR r.status        = :status)
+        WHERE (
+            :keyword1 IS NULL OR
+            LOWER(r.roomNumber) LIKE LOWER(CONCAT('%', :keyword1, '%')) OR
+            LOWER(r.roomType) LIKE LOWER(CONCAT('%', :keyword1, '%')) OR
+            LOWER(r.property.name) LIKE LOWER(CONCAT('%', :keyword1, '%')) OR
+            LOWER(r.property.address) LIKE LOWER(CONCAT('%', :keyword1, '%')) OR
+            (:keyword2 IS NOT NULL AND (
+                LOWER(r.roomNumber) LIKE LOWER(CONCAT('%', :keyword2, '%')) OR
+                LOWER(r.roomType) LIKE LOWER(CONCAT('%', :keyword2, '%')) OR
+                LOWER(r.property.name) LIKE LOWER(CONCAT('%', :keyword2, '%')) OR
+                LOWER(r.property.address) LIKE LOWER(CONCAT('%', :keyword2, '%'))
+            )) OR
+            (:keyword3 IS NOT NULL AND (
+                LOWER(r.roomNumber) LIKE LOWER(CONCAT('%', :keyword3, '%')) OR
+                LOWER(r.roomType) LIKE LOWER(CONCAT('%', :keyword3, '%')) OR
+                LOWER(r.property.name) LIKE LOWER(CONCAT('%', :keyword3, '%')) OR
+                LOWER(r.property.address) LIKE LOWER(CONCAT('%', :keyword3, '%'))
+            )) OR
+            (:keyword4 IS NOT NULL AND (
+                LOWER(r.roomNumber) LIKE LOWER(CONCAT('%', :keyword4, '%')) OR
+                LOWER(r.roomType) LIKE LOWER(CONCAT('%', :keyword4, '%')) OR
+                LOWER(r.property.name) LIKE LOWER(CONCAT('%', :keyword4, '%')) OR
+                LOWER(r.property.address) LIKE LOWER(CONCAT('%', :keyword4, '%'))
+            )) OR
+            (:keyword5 IS NOT NULL AND (
+                LOWER(r.roomNumber) LIKE LOWER(CONCAT('%', :keyword5, '%')) OR
+                LOWER(r.roomType) LIKE LOWER(CONCAT('%', :keyword5, '%')) OR
+                LOWER(r.property.name) LIKE LOWER(CONCAT('%', :keyword5, '%')) OR
+                LOWER(r.property.address) LIKE LOWER(CONCAT('%', :keyword5, '%'))
+            ))
+        )
+        AND (:status IS NULL OR r.status = :status)
         AND (:propertyId IS NULL OR r.property.id = :propertyId)
         AND (:roomTypes IS NULL OR CONCAT(',', :roomTypes, ',') LIKE CONCAT('%,', r.roomType, ',%'))
         AND (:minPrice IS NULL OR r.pricePerNight >= :minPrice)
         AND (:maxPrice IS NULL OR r.pricePerNight <= :maxPrice)
         AND (:capacity IS NULL OR r.capacity >= :capacity)
+        AND (:checkIn IS NULL OR :checkOut IS NULL OR r.status NOT IN (
+            'MAINTENANCE', 'OUT_OF_SERVICE', 'PENDING_CLEANING', 'CLEANING_IN_PROGRESS'
+        ))
         AND (:checkIn IS NULL OR :checkOut IS NULL OR NOT EXISTS (
             SELECT b FROM Booking b
             WHERE b.room = r
@@ -113,7 +141,11 @@ public interface RoomRepository extends JpaRepository<Room, UUID>, JpaSpecificat
         ))
     """)
     Page<Room> findPublicWithFilters(
-            @Param("keyword")    String keyword,
+            @Param("keyword1")   String keyword1,
+            @Param("keyword2")   String keyword2,
+            @Param("keyword3")   String keyword3,
+            @Param("keyword4")   String keyword4,
+            @Param("keyword5")   String keyword5,
             @Param("status")     Room.Status status,
             @Param("propertyId") UUID propertyId,
             @Param("roomTypes")  String roomTypes,

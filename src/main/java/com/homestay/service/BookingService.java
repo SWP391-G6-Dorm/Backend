@@ -9,6 +9,7 @@ import com.homestay.dto.response.ManagerBookingDetailResponse;
 import com.homestay.dto.response.PageResponse;
 import com.homestay.entity.Booking;
 import com.homestay.entity.BookingCheckVerification;
+import com.homestay.entity.Contract;
 import com.homestay.entity.Payment;
 import com.homestay.entity.Property;
 import com.homestay.entity.Room;
@@ -19,6 +20,7 @@ import com.homestay.exception.ConflictException;
 import com.homestay.exception.ForbiddenException;
 import com.homestay.repository.BookingCheckVerificationRepository;
 import com.homestay.repository.BookingRepository;
+import com.homestay.repository.ContractRepository;
 import com.homestay.repository.ManagerPropertyAssignmentRepository;
 import com.homestay.repository.PaymentRepository;
 import com.homestay.repository.RoomInspectionRepository;
@@ -36,7 +38,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -63,10 +64,12 @@ public class BookingService {
     private final RoomInspectionRepository roomInspectionRepository;
     private final BookingCheckVerificationRepository checkVerificationRepository;
     private final HousekeepingTaskService housekeepingTaskService;
-    private final DamageFeeSettlementService damageFeeSettlementService;
+    private final ContractRepository contractRepository;
     private final long holdTimeoutMinutes;
 
     private static final long MAX_ID_DOC_BYTES = 5L * 1024 * 1024;
+    private static final int CUSTOMER_CANCEL_REFUND_PERCENT = 50;
+    private static final int MANAGER_CANCEL_REFUND_PERCENT = 100;
 
     public BookingService(BookingRepository bookingRepository,
                           NotificationService notificationService,
@@ -78,7 +81,7 @@ public class BookingService {
                           RoomInspectionRepository roomInspectionRepository,
                           BookingCheckVerificationRepository checkVerificationRepository,
                           HousekeepingTaskService housekeepingTaskService,
-                          DamageFeeSettlementService damageFeeSettlementService,
+                          ContractRepository contractRepository,
                           @org.springframework.beans.factory.annotation.Value("${app.booking.hold-timeout-minutes:10}") long holdTimeoutMinutes) {
         this.bookingRepository = bookingRepository;
         this.notificationService = notificationService;
@@ -90,7 +93,7 @@ public class BookingService {
         this.roomInspectionRepository = roomInspectionRepository;
         this.checkVerificationRepository = checkVerificationRepository;
         this.housekeepingTaskService = housekeepingTaskService;
-        this.damageFeeSettlementService = damageFeeSettlementService;
+        this.contractRepository = contractRepository;
         this.holdTimeoutMinutes = holdTimeoutMinutes > 0 ? holdTimeoutMinutes : 10;
     }
 
@@ -283,26 +286,15 @@ public class BookingService {
         return urls;
     }
 
-    /**
-     * SCR-37 — Manager check-in with multipart CMND/CCCD (scoped).
-     * Remaining 60% MUST be PAID before check-in completes (online or desk collection).
-     */
+    /** SCR-37 — Manager check-in with verification (scoped). */
     @org.springframework.transaction.annotation.Transactional
     public ManagerBookingDetailResponse markAsCheckedInForManager(
-            User manager,
-            UUID id,
-            MultipartFile idCardFront,
-            MultipartFile idCardBack,
-            boolean depositCollected,
-            boolean keyHandedOver,
-            String note) {
+            User manager, UUID id, ManagerCheckInRequest req) {
         Booking booking = findBookingOrThrow(id);
         scopeValidator.validateManagerAccess(manager, booking.getRoom().getProperty().getId());
 
-        if (idCardFront == null || idCardFront.isEmpty() || idCardBack == null || idCardBack.isEmpty()) {
-            throw new BusinessException("Cần ảnh CMND/CCCD mặt trước và mặt sau");
-        }
-        if (!keyHandedOver) {
+        validateIdDocumentUrls(req.getIdDocumentUrls());
+        if (!Boolean.TRUE.equals(req.getKeyHandedOver())) {
             throw new BusinessException("Phải xác nhận đã giao chìa khóa cho khách");
         }
 
@@ -314,27 +306,18 @@ public class BookingService {
         }
 
         List<Payment> payments = paymentRepository.findByBookingIdOrderByCreatedAtDesc(booking.getId());
-        boolean remainingUnpaid = isRemainingUnpaid(booking, payments);
-        if (remainingUnpaid) {
-            if (!depositCollected) {
-                throw new ConflictException(
-                        "CHECKIN_DENIED_UNPAID: Chưa thu phần còn lại (Remaining Balance) — không thể Check-in");
-            }
-            recordRemainingPaidAtDesk(booking, manager, payments);
+        boolean remainingUnpaid = booking.getRemainingAmount().compareTo(BigDecimal.ZERO) > 0
+                && payments.stream().noneMatch(p ->
+                p.getType() == Payment.Type.REMAINING_BALANCE && p.getStatus() == Payment.Status.PAID);
+        if (remainingUnpaid && !Boolean.TRUE.equals(req.getRemainingCollected())) {
+            throw new ConflictException("Chưa thu phần còn lại");
         }
-
-        List<String> docUrls = saveIdDocumentPair(booking.getId(), idCardFront, idCardBack);
 
         booking.setStatus(Booking.Status.CHECKED_IN);
         booking.getRoom().setStatus(Room.Status.OCCUPIED);
         bookingRepository.save(booking);
 
-        ManagerCheckInRequest verification = new ManagerCheckInRequest();
-        verification.setIdDocumentUrls(docUrls);
-        verification.setKeyHandedOver(true);
-        verification.setRemainingCollected(remainingUnpaid || depositCollected);
-        verification.setNote(note);
-        saveCheckVerification(booking, manager, BookingCheckVerification.Type.CHECK_IN, verification);
+        saveCheckVerification(booking, manager, BookingCheckVerification.Type.CHECK_IN, req);
 
         String roomName = booking.getRoom().getRoomNumber();
         notificationService.sendNotification(
@@ -348,7 +331,7 @@ public class BookingService {
         return buildManagerDetail(booking);
     }
 
-    /** SCR-37 — Manager check-out with inspection / payment gates (scoped). */
+    /** SCR-37 — Manager check-out with inspection gate (scoped). */
     @org.springframework.transaction.annotation.Transactional
     public ManagerBookingDetailResponse markAsCheckedOutForManager(
             User manager, UUID id, ManagerCheckOutRequest req) {
@@ -360,7 +343,6 @@ public class BookingService {
         }
 
         if (booking.getStatus() == Booking.Status.CHECKED_IN) {
-            // Status machine: Check-out requested → Pending Inspection (employee inspects before final check-out)
             booking.setStatus(Booking.Status.PENDING_INSPECTION);
             ensureInspectionPending(booking);
             bookingRepository.save(booking);
@@ -374,169 +356,28 @@ public class BookingService {
             if (inspection.getStatus() != RoomInspection.Status.PASSED) {
                 throw new ConflictException("Chưa hoàn tất kiểm tra phòng");
             }
-            settleDamageFeeAtDeskIfRequested(booking, manager, req);
-            assertPaymentsClearedForCheckOut(booking);
-            return finalizeCheckedOut(booking, manager, req);
+            booking.setStatus(Booking.Status.CHECKED_OUT);
+            booking.getRoom().setStatus(Room.Status.PENDING_CLEANING);
+            bookingRepository.save(booking);
+            housekeepingTaskService.onBookingCheckedOut(booking);
+            saveCheckOutVerification(booking, manager, req);
+
+            String roomName = booking.getRoom().getRoomNumber();
+            notificationService.sendNotification(
+                    booking.getCustomer().getId(),
+                    com.homestay.entity.Notification.Type.BOOKING_CONFIRMED,
+                    "Đã trả phòng",
+                    "Cảm ơn bạn đã lưu trú tại " + roomName + ". Hẹn gặp lại!",
+                    booking.getId(), "Booking"
+            );
+            return buildManagerDetail(booking);
         }
 
         if (booking.getStatus() == Booking.Status.PENDING_DAMAGE_PAYMENT) {
-            settleDamageFeeAtDeskIfRequested(booking, manager, req);
-            assertPaymentsClearedForCheckOut(booking);
-            return finalizeCheckedOut(booking, manager, req);
+            throw new ConflictException("Khách chưa thanh toán phí thiệt hại");
         }
 
         throw new BusinessException("Không thể trả phòng ở trạng thái hiện tại");
-    }
-
-    private ManagerBookingDetailResponse finalizeCheckedOut(
-            Booking booking, User manager, ManagerCheckOutRequest req) {
-        booking.setStatus(Booking.Status.CHECKED_OUT);
-        booking.getRoom().setStatus(Room.Status.PENDING_CLEANING);
-        bookingRepository.save(booking);
-        housekeepingTaskService.onBookingCheckedOut(booking);
-        saveCheckOutVerification(booking, manager, req);
-
-        String roomName = booking.getRoom().getRoomNumber();
-        notificationService.sendNotification(
-                booking.getCustomer().getId(),
-                com.homestay.entity.Notification.Type.BOOKING_CONFIRMED,
-                "Đã trả phòng",
-                "Cảm ơn bạn đã lưu trú tại " + roomName + ". Hẹn gặp lại!",
-                booking.getId(), "Booking"
-        );
-        return buildManagerDetail(booking);
-    }
-
-    /**
-     * SCR-37 desk: thu phí thiệt hại tại quầy → Payment DAMAGE_FEE = PAID (CASH).
-     */
-    private void settleDamageFeeAtDeskIfRequested(
-            Booking booking, User manager, ManagerCheckOutRequest req) {
-        List<Payment> payments = paymentRepository.findByBookingIdOrderByCreatedAtDesc(booking.getId());
-        boolean damageUnpaid = booking.getDamageFeeAmount() != null
-                && booking.getDamageFeeAmount().compareTo(BigDecimal.ZERO) > 0
-                && payments.stream().noneMatch(p ->
-                p.getType() == Payment.Type.DAMAGE_FEE && p.getStatus() == Payment.Status.PAID);
-
-        if (!damageUnpaid) {
-            return;
-        }
-        if (!Boolean.TRUE.equals(req.getDamageFeeCollected())) {
-            throw new ConflictException("Khách chưa thanh toán phí thiệt hại");
-        }
-        recordDamageFeePaidAtDesk(booking, manager, payments);
-    }
-
-    private void recordDamageFeePaidAtDesk(Booking booking, User manager, List<Payment> existingPayments) {
-        BigDecimal amount = booking.getDamageFeeAmount();
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BusinessException("Số tiền phí thiệt hại không hợp lệ");
-        }
-
-        LocalDateTime now = LocalDateTime.now();
-        Optional<Payment> pendingDamage = existingPayments.stream()
-                .filter(p -> p.getType() == Payment.Type.DAMAGE_FEE
-                        && p.getStatus() == Payment.Status.PENDING)
-                .findFirst();
-
-        Payment payment = pendingDamage.orElseGet(Payment::new);
-        if (pendingDamage.isEmpty()) {
-            payment.setBooking(booking);
-            payment.setCustomer(booking.getCustomer());
-            payment.setType(Payment.Type.DAMAGE_FEE);
-            payment.setAmount(amount);
-        }
-        payment.setMethod(Payment.Method.CASH);
-        payment.setStatus(Payment.Status.PAID);
-        payment.setPaidAt(now);
-        payment.setVerifiedBy(manager);
-        payment.setVerifiedAt(now);
-        payment.setVerificationNote("Thu phí thiệt hại tại quầy khi Check-out (SCR-37)");
-        paymentRepository.save(payment);
-        damageFeeSettlementService.markDamageReportPaidForBooking(booking.getId());
-    }
-
-    private List<String> saveIdDocumentPair(UUID bookingId, MultipartFile front, MultipartFile back) {
-        validateIdDocumentFile(front);
-        validateIdDocumentFile(back);
-
-        Path uploadDir = Paths.get("uploads", "bookings", bookingId.toString()).toAbsolutePath();
-        try {
-            Files.createDirectories(uploadDir);
-        } catch (IOException e) {
-            throw new BusinessException("Không thể tạo thư mục upload");
-        }
-
-        List<String> urls = new ArrayList<>(2);
-        urls.add(storeIdDocument(uploadDir, bookingId, front, "front"));
-        urls.add(storeIdDocument(uploadDir, bookingId, back, "back"));
-        return urls;
-    }
-
-    private String storeIdDocument(Path uploadDir, UUID bookingId, MultipartFile file, String side) {
-        String savedName = side + "_" + UUID.randomUUID() + "_" + sanitizeFilename(file.getOriginalFilename());
-        Path target = uploadDir.resolve(savedName);
-        try {
-            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            throw new BusinessException("Không thể lưu ảnh giấy tờ");
-        }
-        return "/uploads/bookings/" + bookingId + "/" + savedName;
-    }
-
-    private static boolean isRemainingUnpaid(Booking booking, List<Payment> payments) {
-        if (booking.getRemainingAmount() == null
-                || booking.getRemainingAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            return false;
-        }
-        return payments.stream().noneMatch(p ->
-                p.getType() == Payment.Type.REMAINING_BALANCE && p.getStatus() == Payment.Status.PAID);
-    }
-
-    /**
-     * SCR-37 desk collection: mark/create Remaining Payment as PAID (CASH) so check-out gates stay consistent.
-     */
-    private void recordRemainingPaidAtDesk(Booking booking, User manager, List<Payment> existingPayments) {
-        BigDecimal amount = booking.getRemainingAmount();
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BusinessException("Số tiền Remaining không hợp lệ");
-        }
-
-        LocalDateTime now = LocalDateTime.now();
-        Optional<Payment> pendingRemaining = existingPayments.stream()
-                .filter(p -> p.getType() == Payment.Type.REMAINING_BALANCE
-                        && p.getStatus() == Payment.Status.PENDING)
-                .findFirst();
-
-        Payment payment = pendingRemaining.orElseGet(Payment::new);
-        if (pendingRemaining.isEmpty()) {
-            payment.setBooking(booking);
-            payment.setCustomer(booking.getCustomer());
-            payment.setType(Payment.Type.REMAINING_BALANCE);
-            payment.setAmount(amount);
-        }
-        payment.setMethod(Payment.Method.CASH);
-        payment.setStatus(Payment.Status.PAID);
-        payment.setPaidAt(now);
-        payment.setVerifiedBy(manager);
-        payment.setVerifiedAt(now);
-        payment.setVerificationNote("Thu Remaining tại quầy khi Check-in (SCR-37)");
-        paymentRepository.save(payment);
-    }
-
-    private void assertPaymentsClearedForCheckOut(Booking booking) {
-        List<Payment> payments = paymentRepository.findByBookingIdOrderByCreatedAtDesc(booking.getId());
-        if (isRemainingUnpaid(booking, payments)) {
-            throw new ConflictException("Còn khoản Remaining chưa thanh toán — không thể trả phòng");
-        }
-        if (booking.getDamageFeeAmount() != null
-                && booking.getDamageFeeAmount().compareTo(BigDecimal.ZERO) > 0) {
-            boolean damagePaid = payments.stream().anyMatch(p ->
-                    p.getType() == Payment.Type.DAMAGE_FEE && p.getStatus() == Payment.Status.PAID);
-            if (!damagePaid) {
-                throw new ConflictException("Còn phí thiệt hại chưa thanh toán — không thể trả phòng");
-            }
-        }
     }
 
     private void validateIdDocumentFile(MultipartFile file) {
@@ -556,6 +397,20 @@ public class BookingService {
             return "document.jpg";
         }
         return original.replaceAll("[^a-zA-Z0-9._-]", "_");
+    }
+
+    private void validateIdDocumentUrls(List<String> urls) {
+        if (urls == null || urls.isEmpty()) {
+            throw new BusinessException("Cần ít nhất một ảnh giấy tờ");
+        }
+        if (urls.size() > 3) {
+            throw new BusinessException("Tối đa 3 ảnh giấy tờ");
+        }
+        for (String url : urls) {
+            if (url == null || !url.startsWith("/uploads/")) {
+                throw new BusinessException("URL ảnh giấy tờ không hợp lệ");
+            }
+        }
     }
 
     private void saveCheckVerification(
@@ -579,7 +434,6 @@ public class BookingService {
         record.setBooking(booking);
         record.setType(BookingCheckVerification.Type.CHECK_OUT);
         record.setKeyReturned(req.getKeyReturned());
-        record.setDepositRefunded(req.getDepositRefunded());
         record.setNote(req.getNote());
         record.setPerformedBy(manager);
         checkVerificationRepository.save(record);
@@ -630,11 +484,6 @@ public class BookingService {
                         .map(BookingDetailResponse.PaymentInfo::fromEntity)
                         .toList()
         );
-        boolean damageFeePaid = booking.getDamageFeeAmount() != null
-                && booking.getDamageFeeAmount().compareTo(BigDecimal.ZERO) > 0
-                && response.getPayments().stream().anyMatch(p ->
-                "DAMAGE_FEE".equals(p.getType()) && "PAID".equals(p.getStatus()));
-        response.setDamageFeePaid(damageFeePaid);
         return response;
     }
 
@@ -651,45 +500,79 @@ public class BookingService {
             throw new ForbiddenException("Không có quyền hủy booking này");
         }
 
-        if (booking.getStatus() != Booking.Status.PENDING_DEPOSIT
-                && booking.getStatus() != Booking.Status.CONFIRMED) {
-            throw new IllegalArgumentException("Booking không thể hủy ở trạng thái hiện tại");
+        assertCancellableStatus(booking);
+        return buildCancellationPreview(booking, CUSTOMER_CANCEL_REFUND_PERCENT,
+                "Hủy bởi khách hàng: hoàn 50% số tiền đã thanh toán.");
+    }
+
+    /** SCR-69 — Manager cancel preview (100% refund). */
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public CancellationPreviewResponse getManagerCancellationPreview(User manager, UUID id) {
+        Booking booking = findBookingOrThrow(id);
+        scopeValidator.validateManagerAccess(manager, booking.getRoom().getProperty().getId());
+        assertCancellableStatus(booking);
+        return buildCancellationPreview(booking, MANAGER_CANCEL_REFUND_PERCENT,
+                "Hủy bởi Manager (lỗi hệ thống/bất khả kháng): hoàn 100% số tiền đã thanh toán.");
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public void cancelBooking(UUID id, User currentUser) {
+        cancelBooking(id, currentUser, null);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public void cancelBooking(UUID id, User currentUser, String reason) {
+        if (currentUser.getRole() == User.Role.MANAGER) {
+            throw new ForbiddenException("Manager phải hủy qua API /api/v1/manager/bookings/{id}/cancel");
+        }
+        if (currentUser.getRole() != User.Role.CUSTOMER) {
+            throw new ForbiddenException("Không có quyền hủy booking này");
         }
 
+        Booking booking = bookingRepository.findById(id)
+                .orElseThrow(() -> new com.homestay.exception.ResourceNotFoundException("Booking không tồn tại"));
+
+        if (!booking.getCustomer().getId().equals(currentUser.getId())) {
+            throw new ForbiddenException("Không có quyền hủy booking này");
+        }
+
+        assertCancellableStatus(booking);
+        applyCancellation(booking, currentUser, reason, CUSTOMER_CANCEL_REFUND_PERCENT,
+                "Booking cancelled by customer (50% refund of paid amount).");
+    }
+
+    /** SCR-69 — Manager-initiated cancel with required reason and 100% refund. */
+    @org.springframework.transaction.annotation.Transactional
+    public ManagerBookingDetailResponse cancelBookingForManager(User manager, UUID id, String cancelReason) {
+        if (cancelReason == null || cancelReason.isBlank()) {
+            throw new BusinessException("Lý do hủy (cancelReason) là bắt buộc");
+        }
+        if (cancelReason.trim().length() > 500) {
+            throw new BusinessException("Lý do hủy tối đa 500 ký tự");
+        }
+
+        Booking booking = findBookingOrThrow(id);
+        scopeValidator.validateManagerAccess(manager, booking.getRoom().getProperty().getId());
+        assertCancellableStatus(booking);
+
+        applyCancellation(booking, manager, cancelReason.trim(), MANAGER_CANCEL_REFUND_PERCENT,
+                "Booking cancelled by manager (100% refund of paid amount).");
+
+        return buildManagerDetail(booking);
+    }
+
+    private CancellationPreviewResponse buildCancellationPreview(Booking booking, int refundPercent, String policyText) {
         long daysUntilCheckIn = java.time.temporal.ChronoUnit.DAYS.between(
-                java.time.LocalDate.now(), booking.getCheckInDate());
+                LocalDate.now(), booking.getCheckInDate());
         if (daysUntilCheckIn < 0) {
             daysUntilCheckIn = 0;
         }
 
-        java.math.BigDecimal depositPaid = java.math.BigDecimal.ZERO;
-        List<Payment> payments = paymentRepository.findByBookingIdOrderByCreatedAtDesc(id);
-        java.util.Optional<Payment> paidDeposit = payments.stream()
-                .filter(p -> p.getType() == Payment.Type.DEPOSIT && p.getStatus() == Payment.Status.PAID)
-                .findFirst();
-        if (paidDeposit.isPresent()) {
-            depositPaid = paidDeposit.get().getAmount();
-        } else if (booking.getStatus() != Booking.Status.PENDING_DEPOSIT) {
-            depositPaid = booking.getDepositAmount() != null ? booking.getDepositAmount() : java.math.BigDecimal.ZERO;
-        }
-
-        int refundPercent;
-        String policyText;
-        if (daysUntilCheckIn >= 7) {
-            refundPercent = 100;
-            policyText = "Hủy trước 7 ngày check-in: hoàn 100% tiền cọc đã thanh toán.";
-        } else if (daysUntilCheckIn >= 3) {
-            refundPercent = 50;
-            policyText = "Hủy từ 3–6 ngày trước check-in: hoàn 50% tiền cọc đã thanh toán.";
-        } else {
-            refundPercent = 0;
-            policyText = "Hủy dưới 3 ngày trước check-in: không hoàn tiền cọc.";
-        }
-
-        java.math.BigDecimal refundAmount = depositPaid
-                .multiply(java.math.BigDecimal.valueOf(refundPercent))
-                .divide(java.math.BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
-        java.math.BigDecimal forfeitAmount = depositPaid.subtract(refundAmount);
+        BigDecimal paidAmount = sumPaidAmount(booking.getId());
+        BigDecimal refundAmount = paidAmount
+                .multiply(BigDecimal.valueOf(refundPercent))
+                .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
+        BigDecimal forfeitAmount = paidAmount.subtract(refundAmount);
 
         return new CancellationPreviewResponse(
                 (int) daysUntilCheckIn,
@@ -700,47 +583,80 @@ public class BookingService {
         );
     }
 
-    @org.springframework.transaction.annotation.Transactional
-    public void cancelBooking(UUID id, User currentUser) {
-        cancelBooking(id, currentUser, null);
+    private BigDecimal sumPaidAmount(UUID bookingId) {
+        return paymentRepository.findByBookingIdOrderByCreatedAtDesc(bookingId).stream()
+                .filter(p -> p.getStatus() == Payment.Status.PAID)
+                .map(Payment::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    @org.springframework.transaction.annotation.Transactional
-    public void cancelBooking(UUID id, User currentUser, String reason) {
-        Booking booking = bookingRepository.findById(id)
-                .orElseThrow(() -> new com.homestay.exception.ResourceNotFoundException("Booking không tồn tại"));
-
-        boolean isManager = currentUser.getRole() == User.Role.MANAGER;
-        if (!isManager && !booking.getCustomer().getId().equals(currentUser.getId())) {
-            throw new ForbiddenException("Không có quyền hủy booking này");
-        }
-
-        if (booking.getStatus() == Booking.Status.CANCELLED) {
+    private void assertCancellableStatus(Booking booking) {
+        Booking.Status status = booking.getStatus();
+        if (status == Booking.Status.CANCELLED) {
             throw new IllegalArgumentException("Booking đã bị hủy trước đó");
         }
-        if (booking.getStatus() == Booking.Status.CHECKED_IN || booking.getStatus() == Booking.Status.CHECKED_OUT) {
-            throw new IllegalArgumentException("Không thể hủy booking đang check-in hoặc đã check-out");
+        if (status == Booking.Status.CHECKED_IN
+                || status == Booking.Status.CHECKED_OUT
+                || status == Booking.Status.PENDING_INSPECTION
+                || status == Booking.Status.PENDING_DAMAGE_PAYMENT
+                || status == Booking.Status.NO_SHOW) {
+            throw new IllegalArgumentException("Không thể hủy booking sau khi check-in đã bắt đầu hoặc ở trạng thái hiện tại");
         }
+        if (status != Booking.Status.PENDING_DEPOSIT && status != Booking.Status.CONFIRMED) {
+            throw new IllegalArgumentException("Booking không thể hủy ở trạng thái hiện tại");
+        }
+    }
+
+    private void applyCancellation(Booking booking, User actor, String reason, int refundPercent, String notifyDetail) {
+        CancellationPreviewResponse preview = buildCancellationPreview(booking, refundPercent, notifyDetail);
 
         booking.setStatus(Booking.Status.CANCELLED);
         booking.setCancelledAt(java.time.LocalDateTime.now());
-        if (!isManager) {
-            booking.setCancelledBy(currentUser);
-        }
+        booking.setCancelledBy(actor);
         if (reason != null && !reason.isBlank()) {
             booking.setCancelReason(reason.trim());
         }
         bookingRepository.save(booking);
-        // Inventory is date-range based; only clear stale ops hold flags if no other blocking bookings
+
+        applyPaymentRefunds(booking, refundPercent);
+        cancelActiveContract(booking.getId());
         releaseStaleRoomHoldStatus(booking.getRoom());
 
+        String shortId = booking.getId().toString().substring(0, 8).toUpperCase();
         notificationService.sendNotification(
                 booking.getCustomer().getId(),
                 com.homestay.entity.Notification.Type.BOOKING_CANCELLED,
                 "Booking Cancelled",
-                "Your booking #" + booking.getId().toString().substring(0, 8).toUpperCase() + " has been cancelled.",
+                "Your booking #" + shortId + " has been cancelled. Refund: "
+                        + preview.getRefundPercent() + "% (" + preview.getRefundAmount() + " VND).",
                 booking.getId(), "Booking"
         );
+    }
+
+    private void applyPaymentRefunds(Booking booking, int refundPercent) {
+        List<Payment> payments = paymentRepository.findByBookingIdOrderByCreatedAtDesc(booking.getId());
+        for (Payment payment : payments) {
+            if (payment.getStatus() == Payment.Status.PAID) {
+                payment.setStatus(Payment.Status.REFUNDED);
+                String note = "Cancel refund " + refundPercent + "% of paid amount";
+                payment.setVerificationNote(note);
+            } else if (payment.getStatus() == Payment.Status.PENDING) {
+                payment.setStatus(Payment.Status.FAILED);
+                payment.setVerificationNote("Cancelled with booking — pending payment voided");
+            }
+        }
+        if (!payments.isEmpty()) {
+            paymentRepository.saveAll(payments);
+        }
+    }
+
+    private void cancelActiveContract(UUID bookingId) {
+        contractRepository.findByBookingId(bookingId).ifPresent(contract -> {
+            if (contract.getStatus() == Contract.Status.ACTIVE) {
+                contract.setStatus(Contract.Status.CANCELLED);
+                contractRepository.save(contract);
+            }
+        });
     }
 
     @org.springframework.transaction.annotation.Transactional

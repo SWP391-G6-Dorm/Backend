@@ -12,7 +12,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
-/** SCR-43: Chi tiết báo cáo hư hại cho Drawer (hạng mục + ảnh minh chứng). */
+/** SCR-43: Chi tiết báo cáo hư hại cho Drawer (hạng mục + ảnh evidence). */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -32,7 +32,7 @@ public class DamageReportDetailResponse {
     private String note;
     private LocalDateTime createdAt;
     private List<DamageItemResponse> items;
-    private List<PhotoResponse> photos;
+    private List<AttachmentDto> attachments;
 
     @Data
     @NoArgsConstructor
@@ -55,21 +55,21 @@ public class DamageReportDetailResponse {
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class PhotoResponse {
+    public static class AttachmentDto {
         private String url;
-        private String fileName;
+        private String type;
     }
 
     public static DamageReportDetailResponse fromEntity(DamageReport dr) {
         return fromEntity(dr, List.of());
     }
 
-    public static DamageReportDetailResponse fromEntity(DamageReport dr, List<Attachment> attachments) {
+    public static DamageReportDetailResponse fromEntity(DamageReport dr, List<Attachment> reportAttachments) {
         List<DamageItemResponse> items = dr.getItems() == null ? List.of()
                 : dr.getItems().stream().map(DamageItemResponse::fromEntity).toList();
-        List<PhotoResponse> photos = attachments == null ? List.of()
-                : attachments.stream()
-                    .map(a -> new PhotoResponse(a.getFileUrl(), a.getFileName()))
+        List<AttachmentDto> atts = reportAttachments == null ? List.of()
+                : reportAttachments.stream()
+                    .map(a -> new AttachmentDto(a.getFileUrl(), "IMAGE"))
                     .toList();
         return new DamageReportDetailResponse(
                 dr.getId(),
@@ -87,7 +87,7 @@ public class DamageReportDetailResponse {
                 dr.getNote(),
                 dr.getCreatedAt(),
                 items,
-                photos
+                atts
         );
     }
 }

@@ -17,7 +17,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -25,13 +24,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
-/**
- * SCR-43 — Damage Report Management (Manager only).
- * Dual-map: docs `/api/v1/managers/...` + legacy `/api/v1/manager/...`.
- * Dual-method: docs POST approve/reject + legacy PATCH.
- */
+/** SCR-43 — Damage Report Management (Manager only). */
 @RestController
-@RequestMapping({"/api/v1/managers", "/api/v1/manager"})
+@RequestMapping("/api/v1/manager")
 @RequiredArgsConstructor
 public class ManagerDamageReportV1Controller {
 
@@ -64,7 +59,6 @@ public class ManagerDamageReportV1Controller {
         return ResponseEntity.ok(ApiResponse.ok(data));
     }
 
-    @PostMapping("/damage-reports/{id}/approve")
     @PatchMapping("/damage-reports/{id}/approve")
     @PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<ApiResponse<DamageReportDetailResponse>> approve(
@@ -78,7 +72,6 @@ public class ManagerDamageReportV1Controller {
         return ResponseEntity.ok(ApiResponse.ok(msg, data));
     }
 
-    @PostMapping("/damage-reports/{id}/reject")
     @PatchMapping("/damage-reports/{id}/reject")
     @PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<ApiResponse<DamageReportDetailResponse>> reject(

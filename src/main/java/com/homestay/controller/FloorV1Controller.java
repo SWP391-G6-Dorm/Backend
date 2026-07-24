@@ -27,7 +27,7 @@ import java.util.UUID;
 
 /** SCR-28 — Floor CRUD v1 (Manager, property-scoped). */
 @RestController
-@RequestMapping("/api/v1/manager/floors")
+@RequestMapping("/api/v1/managers/properties/{propertyId}/floors")
 @RequiredArgsConstructor
 public class FloorV1Controller {
 
@@ -36,7 +36,7 @@ public class FloorV1Controller {
     @GetMapping
     @PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<ApiResponse<List<FloorResponse>>> getByProperty(
-            @RequestParam UUID propertyId,
+            @PathVariable UUID propertyId,
             @AuthenticationPrincipal User currentUser) {
         List<FloorResponse> data = floorService.getByPropertyForManager(currentUser, propertyId);
         return ResponseEntity.ok(ApiResponse.ok(data));
@@ -45,8 +45,10 @@ public class FloorV1Controller {
     @PostMapping
     @PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<ApiResponse<FloorResponse>> create(
+            @PathVariable UUID propertyId,
             @Valid @RequestBody CreateFloorRequest request,
             @AuthenticationPrincipal User currentUser) {
+        request.setPropertyId(propertyId.toString());
         FloorResponse res = floorService.createForManager(currentUser, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok("Tạo tầng thành công", res));
     }
@@ -54,6 +56,7 @@ public class FloorV1Controller {
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<ApiResponse<FloorResponse>> update(
+            @PathVariable UUID propertyId,
             @PathVariable UUID id,
             @Valid @RequestBody UpdateFloorRequest request,
             @AuthenticationPrincipal User currentUser) {
@@ -64,6 +67,7 @@ public class FloorV1Controller {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<ApiResponse<Void>> delete(
+            @PathVariable UUID propertyId,
             @PathVariable UUID id,
             @AuthenticationPrincipal User currentUser) {
         floorService.deleteForManager(currentUser, id);

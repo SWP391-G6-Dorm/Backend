@@ -17,6 +17,10 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Legacy /api/contracts aliases — prefer /api/v1/... paths.
+ * Manager list now property-scopes via {@link ContractService#getManagerContracts}.
+ */
 @RestController
 @RequestMapping("/api/contracts")
 @RequiredArgsConstructor
@@ -24,22 +28,24 @@ public class ContractController {
 
     private final ContractService contractService;
 
-    // ── MANAGER: lấy tất cả hợp đồng ────────────────────────────────────────
     @GetMapping
     @PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<ApiResponse<PageResponse<ContractSummaryResponse>>> getAllContracts(
+            @AuthenticationPrincipal User currentUser,
+            @RequestParam(required = false) String propertyId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String sort
     ) {
-        PageResponse<ContractSummaryResponse> data = contractService.getAllContracts(page, size, status, search, sort);
+        PageResponse<ContractSummaryResponse> data = contractService.getManagerContracts(
+                currentUser, propertyId, page, size, status, search, sort);
         return ResponseEntity.ok(ApiResponse.ok(data));
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('MANAGER', 'CUSTOMER')")
+    @PreAuthorize("hasAnyRole('MANAGER', 'CUSTOMER', 'ADMIN')")
     public ResponseEntity<ApiResponse<ContractDetailResponse>> getContractDetail(
             @PathVariable UUID id,
             @AuthenticationPrincipal User currentUser
@@ -59,7 +65,7 @@ public class ContractController {
     }
 
     @GetMapping("/{id}/pdf")
-    @PreAuthorize("hasAnyRole('MANAGER', 'CUSTOMER')")
+    @PreAuthorize("hasAnyRole('MANAGER', 'CUSTOMER', 'ADMIN')")
     public ResponseEntity<byte[]> downloadContractPdf(
             @PathVariable UUID id,
             @AuthenticationPrincipal User currentUser
@@ -68,7 +74,7 @@ public class ContractController {
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_PDF);
-        headers.set(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"Contract_" + id + ".pdf\"");
+        headers.setContentDispositionFormData("attachment", "Contract_" + id + ".pdf");
         headers.setCacheControl("must-revalidate, post-check=0, pre-check=0");
 
         return ResponseEntity.ok()
@@ -80,10 +86,11 @@ public class ContractController {
     @PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<ApiResponse<Void>> resendContractEmail(
             @PathVariable UUID id,
+            @AuthenticationPrincipal User currentUser,
             @RequestBody(required = false) Map<String, String> request
     ) {
         String targetEmail = request != null ? request.get("email") : null;
-        contractService.resendContractEmail(id, targetEmail);
+        contractService.resendContractEmail(id, currentUser, targetEmail);
         return ResponseEntity.ok(ApiResponse.ok("Gửi email thành công"));
     }
 }

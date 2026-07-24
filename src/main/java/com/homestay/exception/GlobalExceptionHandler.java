@@ -66,11 +66,13 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
-    // Lỗi vi phạm unique constraint DB (vd: Room Number trùng trong cùng property)
+    // Lỗi vi phạm constraint DB (unique, check, FK...)
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleDataIntegrity(DataIntegrityViolationException ex) {
         String message = "Dữ liệu bị trùng lặp";
         String causeMsg = ex.getMostSpecificCause().getMessage();
+        // Log nguyên nhân gốc để chẩn đoán (không expose chi tiết DB cho client)
+        System.err.println("[DataIntegrityViolation] " + causeMsg);
         if (causeMsg != null && causeMsg.contains("uq_room_number_property")) {
             message = "Số phòng đã tồn tại trong property này. Vui lòng chọn số phòng khác.";
         }

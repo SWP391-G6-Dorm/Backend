@@ -10,7 +10,6 @@ import com.homestay.service.AdminComplaintService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -42,7 +41,9 @@ public class AdminComplaintController {
             @RequestParam(defaultValue = "10") int size) {
         int safePage = Math.max(page, 0);
         int safeSize = Math.min(Math.max(size, 1), 100);
-        PageRequest pageable = PageRequest.of(safePage, safeSize, Sort.by("createdAt").descending());
+        // Không truyền Sort: query findForAdmin đã ORDER BY createdAt DESC.
+        // Sort + ORDER BY trùng cột → SQL Server báo lỗi duplicate order by column.
+        PageRequest pageable = PageRequest.of(safePage, safeSize);
         return ResponseEntity.ok(ApiResponse.ok(
                 adminComplaintService.listComplaints(status, keyword, pageable)));
     }

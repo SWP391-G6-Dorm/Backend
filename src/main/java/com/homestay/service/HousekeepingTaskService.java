@@ -66,6 +66,8 @@ import java.util.Map;
 
 import java.util.UUID;
 
+import java.util.stream.Collectors;
+
 
 
 @Service
@@ -310,121 +312,192 @@ public class HousekeepingTaskService {
 
 
     @Transactional(readOnly = true)
+
     public HousekeepingScheduleResponse getScheduleForManager(
+
             User manager, UUID propertyId, LocalDate date) {
+
         scopeValidator.validateManagerAccess(manager, propertyId);
 
+
+
         LocalDate scheduleDate = date != null ? date : LocalDate.now(ZONE);
+
         LocalDateTime start = scheduleDate.atStartOfDay(ZONE).toLocalDateTime();
+
         LocalDateTime end = scheduleDate.plusDays(1).atStartOfDay(ZONE).toLocalDateTime();
 
+
+
         List<HousekeepingTask.Status> statuses = List.of(
+
                 HousekeepingTask.Status.PENDING,
+
                 HousekeepingTask.Status.IN_PROGRESS,
+
                 HousekeepingTask.Status.COMPLETED
+
         );
 
+
+
         List<HousekeepingTask> tasks = taskRepository.findScheduleTasks(
+
                 propertyId, statuses, start, end);
+
+
 
         List<User> employees = employeeAssignmentRepository.findActiveEmployeesByPropertyId(
                 propertyId, EmployeePropertyAssignment.Status.ACTIVE, User.Role.EMPLOYEE);
 
-        List<HousekeepingScheduleResponse.ScheduleTask> unassigned = new ArrayList<>();
-        Map<UUID, List<HousekeepingScheduleResponse.ScheduleTask>> byEmployee = new LinkedHashMap<>();
+
+
+        List<HousekeepingTaskSummaryResponse> unassigned = new ArrayList<>();
+
+        Map<UUID, List<HousekeepingTaskSummaryResponse>> byEmployee = new LinkedHashMap<>();
+
         for (User employee : employees) {
+
             byEmployee.put(employee.getId(), new ArrayList<>());
+
         }
+
+
 
         long pending = 0;
+
         long inProgress = 0;
-        long completedToday = 0;
+
+        long completed = 0;
+
+
 
         for (HousekeepingTask task : tasks) {
-            HousekeepingScheduleResponse.ScheduleTask card = toScheduleTask(task);
+
+            HousekeepingTaskSummaryResponse summary = HousekeepingTaskSummaryResponse.fromEntity(task);
+
             switch (task.getStatus()) {
+
                 case PENDING -> pending++;
+
                 case IN_PROGRESS -> inProgress++;
-                case COMPLETED -> completedToday++;
+
+                case COMPLETED -> completed++;
+
                 default -> { }
+
             }
+
+
 
             if (task.getAssignedEmployee() == null) {
-                unassigned.add(card);
+
+                unassigned.add(summary);
+
             } else {
+
                 byEmployee
+
                         .computeIfAbsent(task.getAssignedEmployee().getId(), k -> new ArrayList<>())
-                        .add(card);
+
+                        .add(summary);
+
             }
+
         }
 
-        List<HousekeepingScheduleResponse.Column> columns = new ArrayList<>();
-        columns.add(new HousekeepingScheduleResponse.Column(null, "Unassigned", unassigned));
 
-        for (User emp : employees) {
-            columns.add(new HousekeepingScheduleResponse.Column(
-                    emp.getId(),
-                    emp.getFullName(),
-                    byEmployee.getOrDefault(emp.getId(), List.of())));
-        }
 
-        // Orphan assignees (task assigned to employee no longer ACTIVE on property)
+        List<HousekeepingScheduleResponse.EmployeeColumn> columns = employees.stream()
+
+                .map(emp -> new HousekeepingScheduleResponse.EmployeeColumn(
+
+                        emp.getId(),
+
+                        emp.getFullName(),
+
+                        byEmployee.getOrDefault(emp.getId(), List.of())))
+
+                .collect(Collectors.toList());
+
+
+
         byEmployee.forEach((employeeId, taskList) -> {
+
             if (taskList.isEmpty()) {
+
                 return;
+
             }
+
             boolean alreadyColumn = columns.stream()
-                    .anyMatch(c -> employeeId.equals(c.getAssigneeId()));
+
+                    .anyMatch(c -> c.getEmployeeId().equals(employeeId));
+
             if (!alreadyColumn) {
-                String name = tasks.stream()
-                        .filter(t -> t.getAssignedEmployee() != null
-                                && employeeId.equals(t.getAssignedEmployee().getId()))
-                        .map(t -> t.getAssignedEmployee().getFullName())
-                        .findFirst()
-                        .orElse("Nhân viên");
-                columns.add(new HousekeepingScheduleResponse.Column(employeeId, name, taskList));
+
+                String name = taskList.get(0).getAssigneeName();
+
+                columns.add(new HousekeepingScheduleResponse.EmployeeColumn(
+
+                        employeeId, name != null ? name : "Nhân viên", taskList));
+
             }
+
         });
 
-        HousekeepingScheduleResponse.Kpis kpis = new HousekeepingScheduleResponse.Kpis(
-                pending, inProgress, completedToday, unassigned.size());
 
-        return new HousekeepingScheduleResponse(scheduleDate, kpis, columns);
+
+        HousekeepingScheduleResponse.Summary summaryStats = new HousekeepingScheduleResponse.Summary(
+
+                pending, inProgress, completed, unassigned.size());
+
+
+
+        return new HousekeepingScheduleResponse(
+
+                scheduleDate, summaryStats, unassigned, columns);
+
     }
 
+
+
     @Transactional
+
     public HousekeepingTaskSummaryResponse assignTaskForManager(
+
             User manager, UUID taskId, AssignHousekeepingTaskRequest request) {
+
         HousekeepingTask task = taskRepository.findById(taskId)
+
                 .orElseThrow(() -> new BusinessException("Tác vụ dọn phòng không tồn tại"));
+
+
 
         scopeValidator.validateManagerAccess(manager, task.getProperty().getId());
 
+
+
         if (task.getStatus() != HousekeepingTask.Status.PENDING
+
                 && task.getStatus() != HousekeepingTask.Status.IN_PROGRESS) {
+
             throw new ConflictException("Không thể gán lại tác vụ đã hoàn tất hoặc đã hủy");
+
         }
 
-        UUID employeeId = request.resolveEmployeeId();
-        if (employeeId == null) {
-            throw new BusinessException("Cần chọn nhân viên");
-        }
 
-        User assignee = resolveAssignee(employeeId, task.getProperty().getId());
+
+        User assignee = resolveAssignee(request.getAssigneeId(), task.getProperty().getId());
+
         task.setAssignedEmployee(assignee);
+
         taskRepository.save(task);
 
-        return HousekeepingTaskSummaryResponse.fromEntity(task);
-    }
 
-    private static HousekeepingScheduleResponse.ScheduleTask toScheduleTask(HousekeepingTask task) {
-        return new HousekeepingScheduleResponse.ScheduleTask(
-                task.getId(),
-                new HousekeepingScheduleResponse.RoomBrief(
-                        task.getRoom().getId(),
-                        task.getRoom().getRoomNumber()),
-                task.getStatus().name(),
-                task.getCreatedAt());
+
+        return HousekeepingTaskSummaryResponse.fromEntity(task);
+
     }
 
 

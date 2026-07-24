@@ -6,9 +6,9 @@ spring:
     name: homestay-backend
 
   datasource:
-    url: jdbc:sqlserver://localhost:1433;databaseName=HomestayManagement;encrypt=true;trustServerCertificate=true;sendStringParametersAsUnicode=true
-    username: sa
-    password: 123
+    url: ${DB_URL:jdbc:sqlserver://localhost:1433;databaseName=HomestayManagement;encrypt=true;trustServerCertificate=true;sendStringParametersAsUnicode=true}
+    username: ${DB_USERNAME:sa}
+    password: ${DB_PASSWORD:123}
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
 
   jpa:
@@ -24,8 +24,8 @@ spring:
   # Cấu hình upload file
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 30MB
+      max-file-size: 50MB
+      max-request-size: 55MB
 
 
   # Cấu hình gửi email — credentials/host từ .env:
@@ -57,7 +57,7 @@ server:
       enabled: true
       force: true
 
-# JWT config — fallback secret chỉ dùng trong dev, BẮT BUỘC override bằng .env trong production
+# JWT config — secret must be supplied by the local environment
 app:
   jwt:
     secret: ${JWT_SECRET:dev-only-insecure-default-secret-change-in-production-must-be-long}
@@ -68,9 +68,9 @@ app:
   google:
     client-id: ${GOOGLE_CLIENT_ID:dev-google-client-id}
 
-  # Thư mục lưu file upload
+  # Thư mục lưu file upload — có thể override bằng UPLOAD_DIR (đường dẫn tuyệt đối)
   upload:
-    dir: uploads/
+    dir: ${UPLOAD_DIR:uploads/}
 
   # Booking hold (Pending Deposit unpaid timeout)
   booking:

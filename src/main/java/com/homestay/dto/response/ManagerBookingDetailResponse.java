@@ -44,9 +44,9 @@ public class ManagerBookingDetailResponse {
 
     private boolean canCheckIn;
     private boolean canCheckOut;
+    private boolean canCancel;
+    private String checkInBlockedReason;
     private String checkOutBlockedReason;
-    /** True when damage fee exists and DAMAGE_FEE payment is PAID (status may still be PENDING_DAMAGE_PAYMENT until check-out). */
-    private boolean damageFeePaid;
 
     private List<BookingDetailResponse.PaymentInfo> payments;
 
@@ -78,8 +78,9 @@ public class ManagerBookingDetailResponse {
                 isReviewed,
                 false,
                 false,
-                null,
                 false,
+                null,
+                null,
                 payments
         );
         applyActionFlags(resp, booking, inspection);
@@ -94,26 +95,28 @@ public class ManagerBookingDetailResponse {
         LocalDate today = LocalDate.now();
         Booking.Status status = booking.getStatus();
 
-        resp.setCanCheckIn(status == Booking.Status.CONFIRMED
-                && !booking.getCheckInDate().isAfter(today));
+        resp.setCanCancel(status == Booking.Status.PENDING_DEPOSIT
+                || status == Booking.Status.CONFIRMED);
 
-        boolean remainingUnpaid = booking.getRemainingAmount() != null
-                && booking.getRemainingAmount().compareTo(java.math.BigDecimal.ZERO) > 0
-                && (resp.getPayments() == null || resp.getPayments().stream().noneMatch(p ->
-                "REMAINING_BALANCE".equals(p.getType()) && "PAID".equals(p.getStatus())));
-
-        boolean damageUnpaid = booking.getDamageFeeAmount() != null
-                && booking.getDamageFeeAmount().compareTo(java.math.BigDecimal.ZERO) > 0
-                && (resp.getPayments() == null || resp.getPayments().stream().noneMatch(p ->
-                "DAMAGE_FEE".equals(p.getType()) && "PAID".equals(p.getStatus())));
-
-        resp.setDamageFeePaid(booking.getDamageFeeAmount() != null
-                && booking.getDamageFeeAmount().compareTo(java.math.BigDecimal.ZERO) > 0
-                && !damageUnpaid);
+        if (status == Booking.Status.CONFIRMED) {
+            if (booking.getCheckInDate().isAfter(today)) {
+                resp.setCanCheckIn(false);
+                resp.setCheckInBlockedReason(
+                        "Chưa đến ngày nhận phòng (" + booking.getCheckInDate() + "). Nút sẽ mở từ ngày này.");
+            } else {
+                resp.setCanCheckIn(true);
+                resp.setCheckInBlockedReason(null);
+            }
+        } else if (status == Booking.Status.PENDING_DEPOSIT) {
+            resp.setCanCheckIn(false);
+            resp.setCheckInBlockedReason("Khách chưa thanh toán / xác nhận tiền cọc — booking vẫn Chờ cọc.");
+        } else {
+            resp.setCanCheckIn(false);
+            resp.setCheckInBlockedReason(null);
+        }
 
         switch (status) {
             case CHECKED_IN -> {
-                // First check-out action requests inspection (status → PENDING_INSPECTION)
                 resp.setCanCheckOut(true);
                 resp.setCheckOutBlockedReason(null);
             }
@@ -121,31 +124,12 @@ public class ManagerBookingDetailResponse {
                 boolean passed = inspection
                         .map(i -> i.getStatus() == RoomInspection.Status.PASSED)
                         .orElse(false);
-                if (!passed) {
-                    resp.setCanCheckOut(false);
-                    resp.setCheckOutBlockedReason("Đang chờ kiểm tra phòng");
-                } else if (remainingUnpaid) {
-                    resp.setCanCheckOut(false);
-                    resp.setCheckOutBlockedReason("Còn khoản Remaining chưa thanh toán");
-                } else if (damageUnpaid) {
-                    resp.setCanCheckOut(false);
-                    resp.setCheckOutBlockedReason("Còn phí thiệt hại chưa thanh toán");
-                } else {
-                    resp.setCanCheckOut(true);
-                    resp.setCheckOutBlockedReason(null);
-                }
+                resp.setCanCheckOut(passed);
+                resp.setCheckOutBlockedReason(passed ? null : "Đang chờ kiểm tra phòng");
             }
             case PENDING_DAMAGE_PAYMENT -> {
-                // Cho phép check-out khi đã PAID online, hoặc Manager thu tại quầy (damageFeeCollected).
-                if (remainingUnpaid) {
-                    resp.setCanCheckOut(false);
-                    resp.setCheckOutBlockedReason("Còn khoản Remaining chưa thanh toán");
-                } else {
-                    resp.setCanCheckOut(true);
-                    resp.setCheckOutBlockedReason(damageUnpaid
-                            ? "Cần thu phí thiệt hại tại quầy hoặc khách trả online trước khi Confirm Check-out"
-                            : null);
-                }
+                resp.setCanCheckOut(false);
+                resp.setCheckOutBlockedReason("Khách chưa thanh toán phí thiệt hại");
             }
             default -> {
                 resp.setCanCheckOut(false);

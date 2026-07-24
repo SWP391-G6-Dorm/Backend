@@ -39,13 +39,38 @@ public class AdminPropertyController {
 
     private final AdminPropertyService adminPropertyService;
 
+    /**
+     * SCR-46 — GET list.
+     * Query: page, size, keyword (name/address), status, managerId, sort (name|createdAt,asc|desc).
+     */
     @GetMapping
     public ResponseEntity<ApiResponse<PageResponse<AdminPropertyResponse>>> list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
-            @RequestParam(required = false) String status) {
-        PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return ResponseEntity.ok(ApiResponse.ok(adminPropertyService.listProperties(status, pageable)));
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) UUID managerId,
+            @RequestParam(defaultValue = "createdAt,desc") String sort) {
+        PageRequest pageable = PageRequest.of(page, size, parseAdminPropertySort(sort));
+        return ResponseEntity.ok(ApiResponse.ok(
+                adminPropertyService.listProperties(keyword, status, managerId, pageable)));
+    }
+
+    /** Whitelist sort fields for SCR-46: name, createdAt. */
+    private static Sort parseAdminPropertySort(String sort) {
+        String field = "createdAt";
+        Sort.Direction direction = Sort.Direction.DESC;
+        if (sort != null && !sort.isBlank()) {
+            String[] parts = sort.split(",");
+            String requested = parts[0].trim();
+            if ("name".equals(requested) || "createdAt".equals(requested)) {
+                field = requested;
+            }
+            if (parts.length > 1 && "asc".equalsIgnoreCase(parts[1].trim())) {
+                direction = Sort.Direction.ASC;
+            }
+        }
+        return Sort.by(direction, field);
     }
 
     /** SCR-47 — Tạo property mới. */
@@ -55,6 +80,12 @@ public class AdminPropertyController {
         AdminPropertyResponse data = adminPropertyService.createProperty(req);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.ok("Tạo property thành công", data));
+    }
+
+    /** SCR-48 — Lấy chi tiết property để pre-fill form Edit. */
+    @GetMapping("/{id}")
+    public ResponseEntity<ApiResponse<AdminPropertyResponse>> getById(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(adminPropertyService.getProperty(id)));
     }
 
     /** SCR-48 — Cập nhật property (partial). */

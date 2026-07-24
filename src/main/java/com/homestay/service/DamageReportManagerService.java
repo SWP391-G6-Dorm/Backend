@@ -22,7 +22,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
@@ -31,7 +30,7 @@ import java.util.UUID;
 /**
  * SCR-43 — Damage Report Management (Manager only).
  * Duyệt / từ chối / escalate báo cáo hư hại; scope theo property qua inspection.property.
- * KHÔNG đụng SCR-64/63 (Employee), SCR-53 (Admin co-approve), luồng Customer dispute/pay.
+ * KHÔNG đụng SCR-64/63 (Employee), SCR-53 (Admin co-approve), luồng Customer.
  */
 @Service
 @RequiredArgsConstructor
@@ -57,13 +56,6 @@ public class DamageReportManagerService {
         Page<DamageReport> result =
                 damageReportRepository.findForManagerBoard(propertyId, status, escalated, search, pageable);
 
-        // Touch items while session open (list "Items Damaged"); avoid JOIN FETCH + Pageable.
-        result.getContent().forEach(dr -> {
-            if (dr.getItems() != null) {
-                dr.getItems().size();
-            }
-        });
-
         List<DamageReportSummaryResponse> content = result.getContent().stream()
                 .map(DamageReportSummaryResponse::fromEntity)
                 .toList();
@@ -81,63 +73,52 @@ public class DamageReportManagerService {
         DamageReport dr = damageReportRepository.findDetailById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy báo cáo hư hại"));
         scopeValidator.validateManagerAccess(manager, dr.getInspection().getProperty().getId());
-        return DamageReportDetailResponse.fromEntity(dr, loadPhotos(dr));
+        return toDetail(dr);
     }
 
     @Transactional
     public DamageReportDetailResponse approveForManager(User manager, UUID id, ApproveDamageReportRequest req) {
         DamageReport dr = loadPendingForManager(manager, id);
 
-        BigDecimal amount = req.getApprovedAmount() != null
-                ? req.getApprovedAmount()
-                : dr.getTotalEstimatedCost();
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BusinessException("Số tiền duyệt phải lớn hơn 0");
-        }
-
         if (Boolean.TRUE.equals(dr.getRequiresAdminEscalation())) {
             if (dr.getApprovedBy() != null) {
-                throw new BusinessException("Báo cáo đã chuyển Admin đồng phê duyệt");
+                throw new BusinessException("Báo cáo đã được chuyển Admin duyệt");
             }
-            // Fee > 5M: Manager xác nhận rồi chuyển Admin đồng phê duyệt (SCR-53).
-            // Không set APPROVED / không gắn phí booking — Manager MUST NOT solo-approve.
+            // Fee > 5M: Manager xác nhận rồi chuyển Admin đồng phê duyệt (SCR-53). Giữ PENDING_APPROVAL.
             dr.setApprovedBy(manager);
             dr.setApprovedAt(LocalDateTime.now());
-            dr.setApprovedAmount(amount);
             if (req.getNote() != null && !req.getNote().isBlank()) {
                 dr.setNote(req.getNote().trim());
             }
             DamageReport saved = damageReportRepository.save(dr);
             notifyAdmins(saved);
-            return DamageReportDetailResponse.fromEntity(saved, loadPhotos(saved));
+            return toDetail(saved);
         }
 
         dr.setStatus(DamageReport.Status.APPROVED);
         dr.setApprovedBy(manager);
         dr.setApprovedAt(LocalDateTime.now());
-        dr.setApprovedAmount(amount);
+        dr.setApprovedAmount(req.getApprovedAmount() != null ? req.getApprovedAmount() : dr.getTotalEstimatedCost());
         if (req.getNote() != null && !req.getNote().isBlank()) {
             dr.setNote(req.getNote().trim());
         }
 
-        damageFeeSettlementService.applyApprovedFee(dr, amount);
+        damageFeeSettlementService.applyApprovedFee(dr, dr.getApprovedAmount());
 
         DamageReport saved = damageReportRepository.save(dr);
-        notifyCustomer(saved, "Báo cáo hư hại của bạn đã được duyệt bồi thường. Vui lòng thanh toán phí thiệt hại (VNPay). Bạn có 24 giờ để Dispute nếu không đồng ý.");
-        return DamageReportDetailResponse.fromEntity(saved, loadPhotos(saved));
+        notifyCustomer(saved, "Báo cáo hư hại của bạn đã được duyệt bồi thường.");
+        return toDetail(saved);
     }
 
     @Transactional
     public DamageReportDetailResponse rejectForManager(User manager, UUID id, RejectDamageReportRequest req) {
         DamageReport dr = loadPendingForManager(manager, id);
-
-        String rejectNote = req.resolvedNote();
-        if (rejectNote == null) {
-            throw new BusinessException("Cần nhập lý do từ chối");
+        if (Boolean.TRUE.equals(dr.getRequiresAdminEscalation()) && dr.getApprovedBy() != null) {
+            throw new BusinessException("Báo cáo đã chuyển Admin — không thể từ chối tại Manager");
         }
 
         dr.setStatus(DamageReport.Status.DRAFT);
-        dr.setNote(rejectNote);
+        dr.setNote(req.getReason().trim());
 
         DamageReport saved = damageReportRepository.save(dr);
 
@@ -147,11 +128,24 @@ public class DamageReportManagerService {
                     inspector.getId(),
                     Notification.Type.SYSTEM,
                     "Báo cáo hư hại bị trả lại",
-                    "Báo cáo hư hại bị trả lại: " + rejectNote,
+                    "Báo cáo hư hại bị trả lại: " + req.getReason().trim(),
                     saved.getId(),
                     "DamageReport");
         }
-        return DamageReportDetailResponse.fromEntity(saved, loadPhotos(saved));
+        return toDetail(saved);
+    }
+
+    private DamageReportDetailResponse toDetail(DamageReport dr) {
+        return DamageReportDetailResponse.fromEntity(dr, loadAttachments(dr));
+    }
+
+    private List<Attachment> loadAttachments(DamageReport dr) {
+        List<UUID> itemIds = dr.getItems() == null ? Collections.emptyList()
+                : dr.getItems().stream().map(DamageItem::getId).toList();
+        if (itemIds.isEmpty()) {
+            return List.of();
+        }
+        return attachmentRepository.findByEntityTypeAndEntityIdIn(ATTACHMENT_ENTITY_TYPE, itemIds);
     }
 
     private DamageReport loadPendingForManager(User manager, UUID id) {
@@ -162,18 +156,6 @@ public class DamageReportManagerService {
             throw new BusinessException("Chỉ có thể xử lý báo cáo đang ở trạng thái Chờ duyệt");
         }
         return dr;
-    }
-
-    private List<Attachment> loadPhotos(DamageReport dr) {
-        List<UUID> itemIds = safeItems(dr).stream().map(DamageItem::getId).toList();
-        if (itemIds.isEmpty()) {
-            return List.of();
-        }
-        return attachmentRepository.findByEntityTypeAndEntityIdIn(ATTACHMENT_ENTITY_TYPE, itemIds);
-    }
-
-    private List<DamageItem> safeItems(DamageReport dr) {
-        return dr.getItems() == null ? Collections.emptyList() : dr.getItems();
     }
 
     private void notifyCustomer(DamageReport dr, String message) {

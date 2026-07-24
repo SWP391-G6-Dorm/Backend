@@ -24,6 +24,7 @@ public class AdminPropertyResponse {
     private String name;
     /** Địa điểm — map từ property.address */
     private String location;
+    private String description;
     private String status;
     /** Manager ACTIVE đang quản lý (null nếu chưa gán) */
     private UUID managerId;
@@ -38,6 +39,7 @@ public class AdminPropertyResponse {
                 .id(property.getId())
                 .name(property.getName())
                 .location(property.getAddress())
+                .description(property.getDescription())
                 .status(property.getStatus().name())
                 .managerId(manager != null ? manager.getId() : null)
                 .managerName(manager != null ? manager.getFullName() : null)
